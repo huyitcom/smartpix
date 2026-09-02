@@ -1,0 +1,8 @@
+{
+  "name": "Smart Pix",
+  "description": "Lọc hình từ link Google Drive bằng cách thả tim và lưu danh sách ảnh đã chọn về thiết bị.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
