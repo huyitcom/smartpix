@@ -30,7 +30,9 @@ export default function Gallery({ folderId, onBack, onOpenFilter }: { folderId: 
         setFiles(dataFiles.files || []);
 
         // Fetch saved selections from server
-        const resSelections = await fetch(`/api/albums/${folderId}/selections`);
+        const resSelections = await fetch(`/api/albums/${folderId}/selections?t=${Date.now()}`, {
+          cache: 'no-store'
+        });
         if (resSelections.ok) {
           const dataSelections = await resSelections.json();
           if (dataSelections.selectedIds) {
@@ -116,7 +118,16 @@ export default function Gallery({ folderId, onBack, onOpenFilter }: { folderId: 
   }
 
   return (
-    <div className="flex flex-col flex-1 bg-rose-50 overflow-hidden">
+    <div className="flex flex-col flex-1 bg-rose-50 overflow-hidden relative">
+      
+      {/* Floating Counter Badge */}
+      <div className="fixed right-0 top-1/2 -translate-y-1/2 flex flex-col gap-2 z-50">
+        <div className="bg-sky-400 text-white px-3 py-3 rounded-l-2xl shadow-lg flex flex-col items-center justify-center font-bold border-l-2 border-y-2 border-white/20">
+          <span className="text-lg md:text-xl leading-none mb-1">{selectedIds.size}</span>
+          <Heart className="w-5 h-5 fill-current text-white" />
+        </div>
+      </div>
+      
       {/* Header */}
       <header className="h-20 bg-white border-b-4 border-rose-100 flex items-center px-4 md:px-8 justify-between shadow-sm z-20 shrink-0">
         <div className="flex items-center gap-3">

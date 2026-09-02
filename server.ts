@@ -31,6 +31,10 @@ async function startServer() {
 
   // API to get selected images for a folder
   app.get("/api/albums/:folderId/selections", async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    
     const folderId = req.params.folderId;
     if (!db) {
        return res.status(500).json({ error: "Database not configured on server" });
