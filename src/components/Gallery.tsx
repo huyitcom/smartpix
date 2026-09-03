@@ -52,21 +52,36 @@ export default function Gallery({ folderId, onBack, onOpenFilter }: { folderId: 
   }, [folderId]);
 
   const toggleSelect = async (id: string) => {
-    let newSet = new Set<string>();
     setSelectedIds(prev => {
-      newSet = new Set(prev);
-      if (newSet.has(id)) newSet.delete(id);
-      else newSet.add(id);
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      
+      // Save directly with the accurate new state
+      saveToDatabase(newSet);
       return newSet;
     });
+  };
 
+  const saveToDatabase = async (newSet: Set<string>) => {
     setSyncStatus('saving');
     try {
-      await fetch(`/api/albums/${folderId}/selections`, {
+      const res = await fetch(`/api/albums/${folderId}/selections`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ selectedIds: Array.from(newSet) })
       });
+      
+      const data = await res.json();
+      if (!res.ok) {
+        if (data.error === "Database not configured on server") {
+          alert("Lỗi: Chưa cấu hình Database (FIREBASE_SERVICE_ACCOUNT) trên máy chủ. Vui lòng thêm biến môi trường này để có thể lưu ảnh!");
+        }
+        throw new Error(data.error || 'Failed to save');
+      }
       setSyncStatus('saved');
     } catch (err) {
       console.error("Save error", err);
