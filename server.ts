@@ -8,25 +8,32 @@ dotenv.config();
 
 let db: admin.firestore.Firestore | null = null;
 
-if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+function getDb() {
+  if (db) return db;
+  
+  const serviceAccountStr = process.env.FIREBASE_SERVICE_ACCOUNT;
+  if (!serviceAccountStr) {
+     throw new Error("Database not configured on server");
+  }
+  
   try {
-    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+    const serviceAccount = JSON.parse(serviceAccountStr);
     if (!admin.apps.length) {
       admin.initializeApp({
         credential: admin.credential.cert(serviceAccount)
       });
     }
     db = admin.firestore();
-    console.log("Firebase Admin initialized successfully.");
-  } catch (error) {
+    return db;
+  } catch (error: any) {
     console.error("Error parsing FIREBASE_SERVICE_ACCOUNT or initializing Firebase Admin:", error);
+    throw new Error("Lỗi đọc cấu hình FIREBASE_SERVICE_ACCOUNT trên máy chủ: " + error.message);
   }
 }
 
 async function startServer() {
   const app = express();
   const PORT = 3000;
-
   app.use(express.json());
 
   // API to get selected images for a folder
@@ -36,11 +43,15 @@ async function startServer() {
     res.setHeader('Expires', '0');
     
     const folderId = req.params.folderId;
-    if (!db) {
-       return res.status(500).json({ error: "Database not configured on server" });
-    }
+    let currentDb;
     try {
-      const doc = await db.collection("albums").doc(folderId).get();
+      currentDb = getDb();
+    } catch (e: any) {
+      return res.status(500).json({ error: e.message });
+    }
+
+    try {
+      const doc = await currentDb.collection("albums").doc(folderId).get();
       if (doc.exists) {
         res.json({ selectedIds: doc.data()?.selectedIds || [] });
       } else {
@@ -60,12 +71,16 @@ async function startServer() {
     if (!Array.isArray(selectedIds)) {
       return res.status(400).json({ error: "selectedIds must be an array" });
     }
-    if (!db) {
-       return res.status(500).json({ error: "Database not configured on server" });
+    
+    let currentDb;
+    try {
+      currentDb = getDb();
+    } catch (e: any) {
+      return res.status(500).json({ error: e.message });
     }
 
     try {
-      await db.collection("albums").doc(folderId).set({
+      await currentDb.collection("albums").doc(folderId).set({
         selectedIds,
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
       }, { merge: true });
