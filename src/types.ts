@@ -3,4 +3,5 @@ export interface DriveFile {
   name: string;
   thumbnailLink?: string;
   webContentLink?: string;
+  createdTime?: string;
 }

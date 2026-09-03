@@ -120,7 +120,7 @@ async function startServer() {
         );
         url.searchParams.append(
           "fields",
-          "nextPageToken, files(id, name, thumbnailLink, webContentLink)"
+          "nextPageToken, files(id, name, thumbnailLink, webContentLink, createdTime)"
         );
         url.searchParams.append("pageSize", "1000");
         url.searchParams.append("key", apiKey);

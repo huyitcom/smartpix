@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, FormEvent } from 'react';
 import { Heart, Link as LinkIcon, FolderSync } from 'lucide-react';
 
 export default function Landing({ onStart, onOpenFilter }: { onStart: (folderId: string) => void, onOpenFilter: () => void }) {
@@ -20,7 +20,7 @@ export default function Landing({ onStart, onOpenFilter }: { onStart: (folderId:
     return null;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
     if (!link.trim()) {
       setError('Vui lòng nhập link.');

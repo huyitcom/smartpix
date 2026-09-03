@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Heart, Download, Image as ImageIcon, Loader2, ArrowLeft, Link as LinkIcon, FolderSync } from 'lucide-react';
+import { Heart, Download, Image as ImageIcon, Loader2, ArrowLeft, Link as LinkIcon, FolderSync, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Maximize, X } from 'lucide-react';
 import type { DriveFile } from '../types';
 
 export default function Gallery({ folderId, onBack, onOpenFilter }: { folderId: string, onBack: () => void, onOpenFilter: (text: string) => void }) {
@@ -9,6 +9,10 @@ export default function Gallery({ folderId, onBack, onOpenFilter }: { folderId: 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [syncStatus, setSyncStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [copied, setCopied] = useState(false);
+  const [filterMode, setFilterMode] = useState<'all' | 'selected' | 'unselected'>('all');
+  const [sortMode, setSortMode] = useState<'name-asc' | 'name-desc' | 'date-asc' | 'date-desc'>('name-asc');
+  const [viewingIndex, setViewingIndex] = useState<number | null>(null);
+  const [zoomLevel, setZoomLevel] = useState(1);
 
   const shareUrl = typeof window !== 'undefined' ? `${window.location.origin}/?folder=${folderId}` : '';
 
@@ -55,7 +59,7 @@ export default function Gallery({ folderId, onBack, onOpenFilter }: { folderId: 
 
   const toggleSelect = async (id: string) => {
     setSelectedIds(prev => {
-      const newSet = new Set(prev);
+      const newSet = new Set<string>(prev);
       if (newSet.has(id)) {
         newSet.delete(id);
       } else {
@@ -102,6 +106,45 @@ export default function Gallery({ folderId, onBack, onOpenFilter }: { folderId: 
     a.click();
     URL.revokeObjectURL(url);
   };
+
+  const filteredAndSortedFiles = files
+    .filter(f => filterMode === 'all' || (filterMode === 'selected' ? selectedIds.has(f.id) : !selectedIds.has(f.id)))
+    .sort((a, b) => {
+      if (sortMode === 'name-asc') return a.name.localeCompare(b.name);
+      if (sortMode === 'name-desc') return b.name.localeCompare(a.name);
+      if (sortMode === 'date-asc') {
+        const timeA = a.createdTime ? new Date(a.createdTime).getTime() : 0;
+        const timeB = b.createdTime ? new Date(b.createdTime).getTime() : 0;
+        return timeA - timeB;
+      }
+      if (sortMode === 'date-desc') {
+        const timeA = a.createdTime ? new Date(a.createdTime).getTime() : 0;
+        const timeB = b.createdTime ? new Date(b.createdTime).getTime() : 0;
+        return timeB - timeA;
+      }
+      return 0;
+    });
+
+  // Keyboard navigation for viewer
+  useEffect(() => {
+    if (viewingIndex === null) return;
+    
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowRight' && viewingIndex < filteredAndSortedFiles.length - 1) {
+        setViewingIndex(viewingIndex + 1);
+        setZoomLevel(1);
+      } else if (e.key === 'ArrowLeft' && viewingIndex > 0) {
+        setViewingIndex(viewingIndex - 1);
+        setZoomLevel(1);
+      } else if (e.key === 'Escape') {
+        setViewingIndex(null);
+        setZoomLevel(1);
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [viewingIndex, filteredAndSortedFiles.length]);
 
   if (loading) {
     return (
@@ -215,10 +258,53 @@ export default function Gallery({ folderId, onBack, onOpenFilter }: { folderId: 
         </div>
       </header>
 
+      {/* Filters */}
+      <div className="bg-white border-b-2 border-rose-50 px-4 md:px-8 py-3 flex flex-col md:flex-row items-center justify-center gap-3 shrink-0">
+        <div className="bg-slate-100 p-1 rounded-full flex gap-1 shadow-inner">
+          <button 
+            onClick={() => setFilterMode('all')}
+            className={`px-4 md:px-6 py-2 rounded-full text-xs md:text-sm font-bold transition-all ${filterMode === 'all' ? 'bg-white text-slate-800 shadow' : 'text-slate-500 hover:text-slate-700'}`}
+          >
+            Tất cả ảnh
+          </button>
+          <button 
+            onClick={() => setFilterMode('selected')}
+            className={`px-4 md:px-6 py-2 rounded-full text-xs md:text-sm font-bold transition-all flex items-center gap-1.5 ${filterMode === 'selected' ? 'bg-rose-500 text-white shadow' : 'text-slate-500 hover:text-slate-700'}`}
+          >
+            Đã chọn ({selectedIds.size})
+          </button>
+          <button 
+            onClick={() => setFilterMode('unselected')}
+            className={`px-4 md:px-6 py-2 rounded-full text-xs md:text-sm font-bold transition-all ${filterMode === 'unselected' ? 'bg-white text-slate-800 shadow' : 'text-slate-500 hover:text-slate-700'}`}
+          >
+            Chưa chọn ({files.length - selectedIds.size})
+          </button>
+        </div>
+
+        <div className="flex items-center">
+          <select
+            value={sortMode}
+            onChange={(e) => setSortMode(e.target.value as any)}
+            className="bg-slate-100 text-slate-700 text-xs md:text-sm font-bold px-4 py-2.5 rounded-full outline-none focus:ring-2 focus:ring-rose-200 cursor-pointer shadow-inner border-none"
+          >
+            <option value="name-asc">Tên (A-Z)</option>
+            <option value="name-desc">Tên (Z-A)</option>
+            <option value="date-desc">Mới nhất</option>
+            <option value="date-asc">Cũ nhất</option>
+          </select>
+        </div>
+      </div>
+
       {/* Grid */}
       <main className="flex-1 p-4 md:p-8 overflow-y-auto">
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 md:gap-6 max-w-[1600px] mx-auto pb-4">
-          {files.map(file => {
+        {filteredAndSortedFiles.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-20 text-slate-400">
+            <ImageIcon className="w-16 h-16 mb-4 opacity-50" />
+            <p className="text-lg font-medium">Không có ảnh nào trong mục này</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 md:gap-6 max-w-[1600px] mx-auto pb-4">
+            {filteredAndSortedFiles.map((file, index) => {
             const isSelected = selectedIds.has(file.id);
             const thumbUrl = file.thumbnailLink ? file.thumbnailLink.replace(/=s\d+/, '=s600') : '';
             
@@ -226,7 +312,7 @@ export default function Gallery({ folderId, onBack, onOpenFilter }: { folderId: 
               <div 
                 key={file.id} 
                 className={`relative bg-white p-2 rounded-3xl transition-transform cursor-pointer group ${isSelected ? 'shadow-xl transform scale-[1.02] border-2 border-transparent' : 'shadow-md border-2 border-transparent hover:scale-[1.01]'}`}
-                onClick={() => toggleSelect(file.id)}
+                onClick={() => setViewingIndex(index)}
               >
                 <div className={`w-full aspect-[4/3] rounded-2xl relative overflow-hidden flex items-center justify-center ${!thumbUrl ? 'bg-blue-100' : 'bg-slate-100'}`}>
                   {thumbUrl ? (
@@ -267,7 +353,8 @@ export default function Gallery({ folderId, onBack, onOpenFilter }: { folderId: 
               </div>
             );
           })}
-        </div>
+          </div>
+        )}
       </main>
 
       {/* Footer */}
@@ -293,6 +380,129 @@ export default function Gallery({ folderId, onBack, onOpenFilter }: { folderId: 
           </div>
         )}
       </footer>
+
+      {/* Lightbox Viewer */}
+      {viewingIndex !== null && filteredAndSortedFiles[viewingIndex] && (
+        <div className="fixed inset-0 z-50 bg-black flex flex-col">
+          {/* Top Bar */}
+          <div className="h-16 px-4 flex items-center justify-between text-white/70 absolute top-0 left-0 right-0 z-20 bg-gradient-to-b from-black/60 to-transparent">
+            <div className="text-sm font-medium">
+              {viewingIndex + 1} / {filteredAndSortedFiles.length}
+            </div>
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={() => {
+                  const file = filteredAndSortedFiles[viewingIndex];
+                  if (file.webContentLink) window.open(file.webContentLink, '_blank');
+                }}
+                className="p-2 hover:text-white transition-colors"
+                title="Tải xuống"
+              >
+                <Download className="w-5 h-5" />
+              </button>
+              <button 
+                onClick={() => setZoomLevel(z => Math.max(0.5, z - 0.25))}
+                className="p-2 hover:text-white transition-colors"
+                title="Thu nhỏ"
+              >
+                <ZoomOut className="w-5 h-5" />
+              </button>
+              <button 
+                onClick={() => setZoomLevel(z => Math.min(4, z + 0.25))}
+                className="p-2 hover:text-white transition-colors"
+                title="Phóng to"
+              >
+                <ZoomIn className="w-5 h-5" />
+              </button>
+              <button 
+                onClick={() => {
+                  if (!document.fullscreenElement) {
+                    document.documentElement.requestFullscreen();
+                  } else {
+                    document.exitFullscreen();
+                  }
+                }}
+                className="p-2 hover:text-white transition-colors"
+                title="Toàn màn hình"
+              >
+                <Maximize className="w-5 h-5" />
+              </button>
+              <button 
+                onClick={() => {
+                  setViewingIndex(null);
+                  setZoomLevel(1);
+                }}
+                className="p-2 hover:text-white transition-colors ml-2"
+                title="Đóng"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+          </div>
+
+          {/* Main Content Area */}
+          <div className="flex-1 relative flex items-center justify-center overflow-hidden h-full">
+            {/* Prev Button */}
+            {viewingIndex > 0 && (
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setViewingIndex(viewingIndex - 1);
+                  setZoomLevel(1);
+                }}
+                className="absolute left-4 top-1/2 -translate-y-1/2 p-3 text-white/50 hover:text-white transition-colors z-20"
+              >
+                <ChevronLeft className="w-8 h-8" />
+              </button>
+            )}
+
+            {/* Image */}
+            <div 
+              className="w-full h-full flex items-center justify-center p-4 md:p-8"
+              style={{ transform: `scale(${zoomLevel})`, transition: 'transform 0.2s ease-out' }}
+            >
+              <img 
+                src={filteredAndSortedFiles[viewingIndex].thumbnailLink?.replace(/=s\d+/, '=s2048') || ''} 
+                alt={filteredAndSortedFiles[viewingIndex].name}
+                className="max-w-full max-h-full object-contain"
+                draggable={false}
+              />
+            </div>
+
+            {/* Next Button */}
+            {viewingIndex < filteredAndSortedFiles.length - 1 && (
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setViewingIndex(viewingIndex + 1);
+                  setZoomLevel(1);
+                }}
+                className="absolute right-4 top-1/2 -translate-y-1/2 p-3 text-white/50 hover:text-white transition-colors z-20"
+              >
+                <ChevronRight className="w-8 h-8" />
+              </button>
+            )}
+          </div>
+
+          {/* Bottom Bar */}
+          <div className="h-16 px-6 flex items-center justify-between text-white/70 absolute bottom-0 left-0 right-0 z-20 bg-gradient-to-t from-black/80 to-transparent">
+            <div className="text-sm truncate max-w-[70%]">
+              {filteredAndSortedFiles[viewingIndex].name}
+            </div>
+            <button 
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleSelect(filteredAndSortedFiles[viewingIndex].id);
+              }}
+              className="p-2 transition-colors flex items-center"
+            >
+              <Heart 
+                className={`w-7 h-7 ${selectedIds.has(filteredAndSortedFiles[viewingIndex].id) ? 'fill-rose-500 text-rose-500 drop-shadow-[0_0_8px_rgba(244,63,94,0.5)]' : 'text-white/70 hover:text-white'}`} 
+              />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
