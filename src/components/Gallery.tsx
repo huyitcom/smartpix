@@ -33,14 +33,16 @@ export default function Gallery({ folderId, onBack, onOpenFilter }: { folderId: 
         const resSelections = await fetch(`/api/albums/${folderId}/selections?t=${Date.now()}`, {
           cache: 'no-store'
         });
+        const dataSelections = await resSelections.json();
         if (resSelections.ok) {
-          const dataSelections = await resSelections.json();
           if (dataSelections.selectedIds) {
             setSelectedIds(new Set(dataSelections.selectedIds));
             if (dataSelections.selectedIds.length > 0) {
               setSyncStatus('saved');
             }
           }
+        } else {
+          alert("Lỗi kết nối cơ sở dữ liệu (tải danh sách): " + (dataSelections.error || 'Unknown error'));
         }
       } catch (err: any) {
         setError(err.message);
@@ -77,9 +79,7 @@ export default function Gallery({ folderId, onBack, onOpenFilter }: { folderId: 
       
       const data = await res.json();
       if (!res.ok) {
-        if (data.error === "Database not configured on server") {
-          alert("Lỗi: Chưa cấu hình Database (FIREBASE_SERVICE_ACCOUNT) trên máy chủ. Vui lòng thêm biến môi trường này để có thể lưu ảnh!");
-        }
+        alert("Lỗi khi lưu ảnh: " + (data.error || 'Failed to save'));
         throw new Error(data.error || 'Failed to save');
       }
       setSyncStatus('saved');
