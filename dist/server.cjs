@@ -26,7 +26,8 @@ var import_express = __toESM(require("express"), 1);
 var import_path = __toESM(require("path"), 1);
 var import_vite = require("vite");
 var import_dotenv = __toESM(require("dotenv"), 1);
-var import_firebase_admin = __toESM(require("firebase-admin"), 1);
+var import_app = require("firebase-admin/app");
+var import_firestore = require("firebase-admin/firestore");
 import_dotenv.default.config();
 var db = null;
 function getDb() {
@@ -37,12 +38,12 @@ function getDb() {
   }
   try {
     const serviceAccount = JSON.parse(serviceAccountStr);
-    if (!import_firebase_admin.default.apps.length) {
-      import_firebase_admin.default.initializeApp({
-        credential: import_firebase_admin.default.credential.cert(serviceAccount)
+    if ((0, import_app.getApps)().length === 0) {
+      (0, import_app.initializeApp)({
+        credential: (0, import_app.cert)(serviceAccount)
       });
     }
-    db = import_firebase_admin.default.firestore();
+    db = (0, import_firestore.getFirestore)();
     return db;
   } catch (error) {
     console.error("Error parsing FIREBASE_SERVICE_ACCOUNT or initializing Firebase Admin:", error);
@@ -91,7 +92,7 @@ async function startServer() {
     try {
       await currentDb.collection("albums").doc(folderId).set({
         selectedIds,
-        updatedAt: import_firebase_admin.default.firestore.FieldValue.serverTimestamp()
+        updatedAt: import_firestore.FieldValue.serverTimestamp()
       }, { merge: true });
       res.json({ success: true, selectedIds });
     } catch (error) {

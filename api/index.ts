@@ -1,10 +1,11 @@
 import express from "express";
-import admin from "firebase-admin";
+import { initializeApp, cert, getApps } from "firebase-admin/app";
+import { getFirestore, FieldValue } from "firebase-admin/firestore";
 
 const app = express();
 app.use(express.json());
 
-let db: admin.firestore.Firestore | null = null;
+let db: any = null;
 
 function getDb() {
   if (db) return db;
@@ -16,12 +17,12 @@ function getDb() {
   
   try {
     const serviceAccount = JSON.parse(serviceAccountStr);
-    if (!admin.apps.length) {
-      admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount)
+    if (getApps().length === 0) {
+      initializeApp({
+        credential: cert(serviceAccount)
       });
     }
-    db = admin.firestore();
+    db = getFirestore();
     return db;
   } catch (error: any) {
     console.error("Error parsing FIREBASE_SERVICE_ACCOUNT or initializing Firebase Admin:", error);
@@ -75,7 +76,7 @@ app.post("/api/albums/:folderId/selections", async (req, res) => {
   try {
     await currentDb.collection("albums").doc(folderId).set({
       selectedIds,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      updatedAt: FieldValue.serverTimestamp()
     }, { merge: true });
     res.json({ success: true, selectedIds });
   } catch (error) {
