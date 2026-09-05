@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Heart, Download, Image as ImageIcon, Loader2, ArrowLeft, Link as LinkIcon, FolderSync, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Maximize, X } from 'lucide-react';
+import { Camera, Heart, Download, Image as ImageIcon, Loader2, ArrowLeft, Link as LinkIcon, FolderSync, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Maximize, X } from 'lucide-react';
 import type { DriveFile } from '../types';
 
 export default function Gallery({ folderId, onBack, onOpenFilter }: { folderId: string, onBack: () => void, onOpenFilter: (text: string) => void }) {
@@ -148,25 +148,25 @@ export default function Gallery({ folderId, onBack, onOpenFilter }: { folderId: 
 
   if (loading) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center bg-rose-50">
-        <Loader2 className="w-12 h-12 text-rose-500 animate-spin mb-4" />
-        <p className="text-rose-400 font-medium text-lg">Đang tải danh sách ảnh...</p>
+      <div className="flex-1 flex flex-col items-center justify-center bg-sky-50">
+        <Loader2 className="w-12 h-12 text-sky-500 animate-spin mb-4" />
+        <p className="text-sky-400 font-medium text-lg">Đang tải danh sách ảnh...</p>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center bg-rose-50 p-4">
-        <div className="bg-white p-10 rounded-3xl shadow-xl text-center max-w-md w-full border border-rose-100">
-          <div className="w-20 h-20 bg-rose-50 rounded-full flex items-center justify-center mx-auto mb-6">
-            <ImageIcon className="w-10 h-10 text-rose-400" />
+      <div className="flex-1 flex flex-col items-center justify-center bg-sky-50 p-4">
+        <div className="bg-white p-10 rounded-3xl shadow-xl text-center max-w-md w-full border border-sky-100">
+          <div className="w-20 h-20 bg-sky-50 rounded-full flex items-center justify-center mx-auto mb-6">
+            <ImageIcon className="w-10 h-10 text-sky-400" />
           </div>
           <h2 className="text-2xl font-bold text-slate-800 mb-3">Không thể tải ảnh</h2>
           <p className="text-slate-600 mb-8 leading-relaxed">{error}</p>
           <button 
             onClick={onBack}
-            className="w-full py-3.5 bg-rose-100 hover:bg-rose-200 text-rose-700 font-bold rounded-xl transition-colors"
+            className="w-full py-3.5 bg-sky-100 hover:bg-sky-200 text-sky-700 font-bold rounded-xl transition-colors"
           >
             Quay lại
           </button>
@@ -176,7 +176,7 @@ export default function Gallery({ folderId, onBack, onOpenFilter }: { folderId: 
   }
 
   return (
-    <div className="flex flex-col flex-1 bg-rose-50 overflow-hidden relative">
+    <div className="flex flex-col flex-1 bg-sky-50 overflow-hidden relative">
       
       {/* Floating Counter Badge */}
       <div className="fixed right-0 top-1/2 -translate-y-1/2 flex flex-col gap-2 z-50">
@@ -187,18 +187,18 @@ export default function Gallery({ folderId, onBack, onOpenFilter }: { folderId: 
       </div>
       
       {/* Header */}
-      <header className="h-20 bg-white border-b-4 border-rose-100 flex items-center px-4 md:px-8 justify-between shadow-sm z-20 shrink-0">
+      <header className="h-20 bg-white border-b-4 border-sky-100 flex items-center px-4 md:px-8 justify-between shadow-sm z-20 shrink-0">
         <div className="flex items-center gap-3">
           <button 
             onClick={onBack} 
-            className="p-2 hover:bg-rose-50 text-slate-400 hover:text-rose-500 rounded-full transition-colors flex items-center gap-2"
+            className="p-2 hover:bg-sky-50 text-slate-400 hover:text-sky-500 rounded-full transition-colors flex items-center gap-2"
           >
             <ArrowLeft className="w-6 h-6" />
           </button>
-          <div className="w-10 h-10 bg-rose-500 rounded-xl flex items-center justify-center shadow-lg transform rotate-3 hidden sm:flex">
-            <Heart className="w-6 h-6 text-white fill-current" />
+          <div className="w-10 h-10 bg-sky-500 rounded-xl flex items-center justify-center shadow-lg transform rotate-3 hidden sm:flex">
+            <Camera className="w-6 h-6 text-white fill-current" />
           </div>
-          <h1 className="text-xl md:text-2xl font-black text-slate-800 tracking-tight hidden lg:block">SMART <span className="text-rose-500">PIX</span></h1>
+          <h1 className="text-xl md:text-2xl font-black text-slate-800 tracking-tight hidden lg:block">SMART <span className="text-sky-500">PIX</span></h1>
         </div>
 
         <div className="flex-1 max-w-xl mx-4 md:mx-12">
@@ -216,7 +216,7 @@ export default function Gallery({ folderId, onBack, onOpenFilter }: { folderId: 
             <button 
               onClick={handleCopyLink}
               className={`absolute right-1 top-1 bottom-1 px-3 md:px-4 font-bold rounded-full text-xs md:text-sm transition-colors flex items-center gap-1 ${
-                copied ? 'bg-green-100 text-green-600' : 'bg-rose-100 hover:bg-rose-200 text-rose-600'
+                copied ? 'bg-green-100 text-green-600' : 'bg-sky-100 hover:bg-sky-200 text-sky-600'
               }`}
             >
               {copied ? 'Đã copy' : 'Copy link'}
@@ -230,7 +230,7 @@ export default function Gallery({ folderId, onBack, onOpenFilter }: { folderId: 
             disabled={selectedIds.size === 0}
             className={`px-4 md:px-6 py-2 md:py-2.5 rounded-full font-bold shadow-md flex items-center gap-2 transition-all ${
               selectedIds.size > 0 
-                ? 'bg-rose-500 hover:bg-rose-600 text-white cursor-pointer' 
+                ? 'bg-sky-500 hover:bg-sky-600 text-white cursor-pointer' 
                 : 'bg-slate-200 text-slate-400 cursor-not-allowed'
             }`}
           >
@@ -259,7 +259,7 @@ export default function Gallery({ folderId, onBack, onOpenFilter }: { folderId: 
       </header>
 
       {/* Filters */}
-      <div className="bg-white border-b-2 border-rose-50 px-4 md:px-8 py-3 flex flex-col md:flex-row items-center justify-center gap-3 shrink-0">
+      <div className="bg-white border-b-2 border-sky-50 px-4 md:px-8 py-3 flex flex-col md:flex-row items-center justify-center gap-3 shrink-0">
         <div className="bg-slate-100 p-1 rounded-full flex gap-1 shadow-inner">
           <button 
             onClick={() => setFilterMode('all')}
@@ -269,7 +269,7 @@ export default function Gallery({ folderId, onBack, onOpenFilter }: { folderId: 
           </button>
           <button 
             onClick={() => setFilterMode('selected')}
-            className={`px-4 md:px-6 py-2 rounded-full text-xs md:text-sm font-bold transition-all flex items-center gap-1.5 ${filterMode === 'selected' ? 'bg-rose-500 text-white shadow' : 'text-slate-500 hover:text-slate-700'}`}
+            className={`px-4 md:px-6 py-2 rounded-full text-xs md:text-sm font-bold transition-all flex items-center gap-1.5 ${filterMode === 'selected' ? 'bg-sky-500 text-white shadow' : 'text-slate-500 hover:text-slate-700'}`}
           >
             Đã chọn ({selectedIds.size})
           </button>
@@ -285,7 +285,7 @@ export default function Gallery({ folderId, onBack, onOpenFilter }: { folderId: 
           <select
             value={sortMode}
             onChange={(e) => setSortMode(e.target.value as any)}
-            className="bg-slate-100 text-slate-700 text-xs md:text-sm font-bold px-4 py-2.5 rounded-full outline-none focus:ring-2 focus:ring-rose-200 cursor-pointer shadow-inner border-none"
+            className="bg-slate-100 text-slate-700 text-xs md:text-sm font-bold px-4 py-2.5 rounded-full outline-none focus:ring-2 focus:ring-sky-200 cursor-pointer shadow-inner border-none"
           >
             <option value="name-asc">Tên (A-Z)</option>
             <option value="name-desc">Tên (Z-A)</option>
@@ -311,7 +311,7 @@ export default function Gallery({ folderId, onBack, onOpenFilter }: { folderId: 
             return (
               <div 
                 key={file.id} 
-                className={`relative bg-white p-2 rounded-3xl transition-transform cursor-pointer group ${isSelected ? 'shadow-xl transform scale-[1.02] border-2 border-transparent' : 'shadow-md border-2 border-transparent hover:scale-[1.01]'}`}
+                className={`relative bg-white p-2 rounded-3xl transition-all duration-300 cursor-pointer group ${isSelected ? 'shadow-xl transform scale-[1.02] border-4 border-sky-500' : 'shadow-md border-4 border-transparent hover:scale-[1.01]'}`}
                 onClick={() => setViewingIndex(index)}
               >
                 <div className={`w-full aspect-[4/3] rounded-2xl relative overflow-hidden flex items-center justify-center ${!thumbUrl ? 'bg-blue-100' : 'bg-slate-100'}`}>
@@ -326,7 +326,7 @@ export default function Gallery({ folderId, onBack, onOpenFilter }: { folderId: 
                     <span className="text-blue-400 font-bold truncate px-4">{file.name}</span>
                   )}
                   
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                  <div className={`absolute inset-0 transition-colors pointer-events-none ${isSelected ? 'bg-sky-500/20' : 'bg-gradient-to-t from-black/20 to-transparent opacity-0 group-hover:opacity-100'}`}></div>
                   
                   <button 
                     onClick={(e) => {
@@ -335,7 +335,7 @@ export default function Gallery({ folderId, onBack, onOpenFilter }: { folderId: 
                     }}
                     className={`absolute top-3 right-3 w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300 transform active:scale-95 ${
                       isSelected 
-                        ? 'bg-white/90 text-rose-500 shadow-lg border-2 border-rose-100 scale-100'
+                        ? 'bg-white/90 text-sky-500 shadow-lg border-2 border-sky-100 scale-100'
                         : 'bg-black/10 text-white backdrop-blur-md opacity-0 group-hover:opacity-100'
                     }`}
                   >
@@ -344,11 +344,11 @@ export default function Gallery({ folderId, onBack, onOpenFilter }: { folderId: 
                 </div>
                 <div className="mt-3 px-2 flex justify-between items-center h-5">
                   {isSelected ? (
-                    <span className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider">Đã chọn</span>
+                    <span className="text-[10px] sm:text-xs font-bold text-sky-500 uppercase tracking-wider">Đã chọn</span>
                   ) : (
                     <span className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider">Chưa chọn</span>
                   )}
-                  <span className={`text-[10px] sm:text-xs font-bold truncate max-w-[100px] ${isSelected ? 'text-rose-400' : 'text-slate-400'}`}>{file.name}</span>
+                  <span className={`text-[10px] sm:text-xs font-bold truncate max-w-[100px] ${isSelected ? 'text-sky-400' : 'text-slate-400'}`}>{file.name}</span>
                 </div>
               </div>
             );
@@ -358,15 +358,15 @@ export default function Gallery({ folderId, onBack, onOpenFilter }: { folderId: 
       </main>
 
       {/* Footer */}
-      <footer className="h-20 md:h-24 bg-rose-500 border-t-4 border-rose-400 px-4 md:px-10 flex items-center justify-between text-white shadow-2xl z-20 shrink-0">
+      <footer className="h-20 md:h-24 bg-sky-500 border-t-4 border-sky-400 px-4 md:px-10 flex items-center justify-between text-white shadow-2xl z-20 shrink-0">
         <div className="flex items-center gap-4 md:gap-8">
           <div className="flex flex-col">
-            <span className="text-rose-100 text-[10px] md:text-xs font-black uppercase tracking-widest">Tổng cộng</span>
+            <span className="text-sky-100 text-[10px] md:text-xs font-black uppercase tracking-widest">Tổng cộng</span>
             <span className="text-2xl md:text-3xl font-black leading-none">{files.length} <span className="text-xs md:text-sm font-medium opacity-80">ảnh</span></span>
           </div>
-          <div className="w-px h-8 md:h-10 bg-rose-400"></div>
+          <div className="w-px h-8 md:h-10 bg-sky-400"></div>
           <div className="flex flex-col">
-            <span className="text-rose-100 text-[10px] md:text-xs font-black uppercase tracking-widest">Đã thả tym</span>
+            <span className="text-sky-100 text-[10px] md:text-xs font-black uppercase tracking-widest">Đã chọn</span>
             <span className="text-2xl md:text-3xl font-black leading-none text-white">{selectedIds.size} <span className="text-xs md:text-sm font-medium opacity-80">ảnh</span></span>
           </div>
         </div>
@@ -441,7 +441,16 @@ export default function Gallery({ folderId, onBack, onOpenFilter }: { folderId: 
           </div>
 
           {/* Main Content Area */}
-          <div className="flex-1 relative flex items-center justify-center overflow-hidden h-full">
+          <div 
+            className="flex-1 relative flex items-center justify-center overflow-hidden h-full"
+            onWheel={(e) => {
+              if (e.deltaY < 0) {
+                setZoomLevel(z => Math.min(4, z + 0.15)); // Scroll up, zoom in
+              } else {
+                setZoomLevel(z => Math.max(0.5, z - 0.15)); // Scroll down, zoom out
+              }
+            }}
+          >
             {/* Prev Button */}
             {viewingIndex > 0 && (
               <button 
@@ -497,7 +506,7 @@ export default function Gallery({ folderId, onBack, onOpenFilter }: { folderId: 
               className="p-2 transition-colors flex items-center"
             >
               <Heart 
-                className={`w-7 h-7 ${selectedIds.has(filteredAndSortedFiles[viewingIndex].id) ? 'fill-rose-500 text-rose-500 drop-shadow-[0_0_8px_rgba(244,63,94,0.5)]' : 'text-white/70 hover:text-white'}`} 
+                className={`w-7 h-7 ${selectedIds.has(filteredAndSortedFiles[viewingIndex].id) ? 'fill-sky-500 text-sky-500 drop-shadow-[0_0_8px_rgba(14,165,233,0.5)]' : 'text-white/70 hover:text-white'}`} 
               />
             </button>
           </div>

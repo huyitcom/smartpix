@@ -37,7 +37,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-rose-50 font-sans text-slate-900 flex flex-col">
+    <div className="min-h-screen bg-sky-50 font-sans text-slate-900 flex flex-col">
       {showFilter ? (
         <LocalFilter onBack={handleCloseFilter} initialFileList={initialFileList} />
       ) : folderId ? (

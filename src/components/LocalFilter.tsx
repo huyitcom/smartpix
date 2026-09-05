@@ -113,12 +113,12 @@ export default function LocalFilter({ onBack, initialFileList = '' }: LocalFilte
     return (
       <div className="flex-1 flex items-center justify-center p-4">
         <div className="bg-white rounded-3xl shadow-xl max-w-lg w-full p-8 text-center">
-          <AlertCircle className="w-16 h-16 text-rose-500 mx-auto mb-4" />
+          <AlertCircle className="w-16 h-16 text-sky-500 mx-auto mb-4" />
           <h2 className="text-xl font-bold mb-2">Trình duyệt không hỗ trợ</h2>
           <p className="text-slate-600 mb-6">
             Tính năng xử lý file local (File System Access API) không được hỗ trợ trên trình duyệt này (hoặc bạn đang mở trong iframe giới hạn). Vui lòng sử dụng Chrome, Edge hoặc Opera trên máy tính và mở ứng dụng ở một tab mới.
           </p>
-          <button onClick={onBack} className="px-6 py-3 bg-rose-500 text-white rounded-xl font-bold">
+          <button onClick={onBack} className="px-6 py-3 bg-sky-500 text-white rounded-xl font-bold">
             Quay lại
           </button>
         </div>
@@ -251,7 +251,7 @@ export default function LocalFilter({ onBack, initialFileList = '' }: LocalFilte
           {/* Progress / Status */}
           {(status !== 'idle' || message) && (
             <div className={`p-4 rounded-xl flex items-center gap-3 ${
-              status === 'error' ? 'bg-rose-50 text-rose-600 border-2 border-rose-100' : 
+              status === 'error' ? 'bg-sky-50 text-sky-600 border-2 border-sky-100' : 
               status === 'done' ? 'bg-green-50 text-green-600 border-2 border-green-100' : 
               'bg-sky-50 text-sky-600 border-2 border-sky-100'
             }`}>

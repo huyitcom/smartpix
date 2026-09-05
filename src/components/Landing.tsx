@@ -1,5 +1,5 @@
 import { useState, FormEvent } from 'react';
-import { Heart, Link as LinkIcon, FolderSync } from 'lucide-react';
+import { Camera, Link as LinkIcon, FolderSync } from 'lucide-react';
 
 export default function Landing({ onStart, onOpenFilter }: { onStart: (folderId: string) => void, onOpenFilter: () => void }) {
   const [link, setLink] = useState('');
@@ -36,7 +36,7 @@ export default function Landing({ onStart, onOpenFilter }: { onStart: (folderId:
   };
 
   return (
-    <div className="flex flex-col items-center justify-center flex-1 bg-rose-50 p-4 font-sans relative">
+    <div className="flex flex-col items-center justify-center flex-1 bg-sky-50 p-4 font-sans relative">
       <div className="absolute top-4 right-4">
         <button 
           onClick={() => onOpenFilter()}
@@ -49,21 +49,17 @@ export default function Landing({ onStart, onOpenFilter }: { onStart: (folderId:
 
       <div className="text-center mb-10">
         <div className="flex items-center justify-center gap-3 mb-3">
-          <div className="w-12 h-12 bg-rose-500 rounded-xl flex items-center justify-center shadow-lg transform rotate-3">
-            <Heart className="w-7 h-7 text-white fill-current" />
+          <div className="w-12 h-12 bg-sky-500 rounded-xl flex items-center justify-center shadow-lg transform rotate-3">
+            <Camera className="w-7 h-7 text-white fill-current" />
           </div>
           <h1 className="text-4xl md:text-5xl font-black text-slate-800 tracking-tight">
-            SMART <span className="text-rose-500">PIX</span>
+            SMART <span className="text-sky-500">PIX</span>
           </h1>
         </div>
-        <p className="text-rose-400 text-sm md:text-base font-medium">Lọc ảnh nhanh từ Google Drive</p>
+        <p className="text-sky-400 text-sm md:text-base font-medium">Lọc ảnh nhanh từ Google Drive</p>
       </div>
 
-      <div className="bg-white rounded-3xl shadow-xl w-full max-w-xl p-2 border-2 border-rose-100">
-        <div className="bg-rose-50 rounded-2xl py-5 px-6 text-center mb-2">
-          <h2 className="text-rose-500 font-bold text-2xl tracking-wide">Bắt đầu</h2>
-        </div>
-        
+      <div className="bg-white rounded-3xl shadow-xl w-full max-w-xl p-2 border-2 border-sky-100">
         <form onSubmit={handleSubmit} className="p-4 md:p-6 flex flex-col gap-6">
           <div>
             <label className="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wider">
@@ -78,10 +74,10 @@ export default function Landing({ onStart, onOpenFilter }: { onStart: (folderId:
                 value={link}
                 onChange={(e) => setLink(e.target.value)}
                 placeholder="https://drive.google.com/drive/folders/..."
-                className="w-full pl-12 pr-4 py-3 bg-slate-100 border-2 border-transparent focus:border-rose-400 rounded-full text-sm text-slate-600 font-medium outline-none transition-colors"
+                className="w-full pl-12 pr-4 py-3 bg-slate-100 border-2 border-transparent focus:border-sky-400 rounded-full text-sm text-slate-600 font-medium outline-none transition-colors"
               />
             </div>
-            {error && <p className="text-rose-500 text-xs mt-2 font-bold pl-2">{error}</p>}
+            {error && <p className="text-sky-500 text-xs mt-2 font-bold pl-2">{error}</p>}
             <p className="text-xs text-slate-500 mt-3 font-medium px-2 leading-relaxed opacity-80">
               * Hoạt động mượt mà với thư mục chứa tới 2000 ảnh.
               <br />
@@ -92,12 +88,16 @@ export default function Landing({ onStart, onOpenFilter }: { onStart: (folderId:
           <div className="mt-2">
              <button
               type="submit"
-              className="w-full bg-rose-500 hover:bg-rose-600 text-white font-bold py-3.5 rounded-full transition-all shadow-md flex items-center justify-center gap-2 text-lg"
+              className="w-full bg-sky-500 hover:bg-sky-600 text-white font-bold py-3.5 rounded-full transition-all shadow-md flex items-center justify-center gap-2 text-lg"
             >
               Tạo trang
             </button>
           </div>
         </form>
+      </div>
+
+      <div className="absolute bottom-6 text-slate-400 text-sm font-medium tracking-wide">
+        Một sản phẩm của Photobook Vietnam
       </div>
     </div>
   );
