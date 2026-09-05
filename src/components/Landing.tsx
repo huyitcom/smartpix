@@ -17,9 +17,9 @@ export default function Landing({ onStart, onOpenFilter, userProfile, setUserPro
     try {
       const profile = await signInWithGoogle();
       setUserProfile(profile);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      alert("Đăng nhập thất bại. Vui lòng kiểm tra lại thiết lập Firebase.");
+      alert(`Đăng nhập thất bại. Mã lỗi: ${err.code || 'Không xác định'}. Chi tiết: ${err.message || 'Vui lòng kiểm tra lại thiết lập Firebase.'}`);
     } finally {
       setAuthLoading(false);
     }
