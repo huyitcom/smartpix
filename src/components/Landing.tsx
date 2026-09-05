@@ -1,9 +1,46 @@
 import { useState, FormEvent } from 'react';
-import { Camera, Link as LinkIcon, FolderSync } from 'lucide-react';
+import { Camera, Link as LinkIcon, FolderSync, LogIn, LogOut, Crown } from 'lucide-react';
+import { signInWithGoogle, logOut, UserProfile } from '../firebase';
 
-export default function Landing({ onStart, onOpenFilter }: { onStart: (folderId: string) => void, onOpenFilter: () => void }) {
+export default function Landing({ onStart, onOpenFilter, userProfile, setUserProfile }: { 
+  onStart: (folderId: string) => void, 
+  onOpenFilter: () => void,
+  userProfile: UserProfile | null,
+  setUserProfile: (profile: UserProfile | null) => void
+}) {
   const [link, setLink] = useState('');
   const [error, setError] = useState('');
+  const [authLoading, setAuthLoading] = useState(false);
+
+  const handleLogin = async () => {
+    setAuthLoading(true);
+    try {
+      const profile = await signInWithGoogle();
+      setUserProfile(profile);
+    } catch (err) {
+      console.error(err);
+      alert("Đăng nhập thất bại. Vui lòng kiểm tra lại thiết lập Firebase.");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    await logOut();
+    setUserProfile(null);
+  };
+
+  const handleVIPFilterClick = () => {
+    if (!userProfile) {
+      alert("Vui lòng đăng nhập để sử dụng chức năng này.");
+      return;
+    }
+    if (userProfile.role !== 'vip' && userProfile.role !== 'admin') {
+      alert("Chức năng 'Lọc ảnh máy tính' chỉ dành cho khách hàng VIP. Vui lòng liên hệ Admin để nâng cấp tài khoản.");
+      return;
+    }
+    onOpenFilter();
+  };
 
   const extractFolderId = (url: string) => {
     // Handle drive.google.com/drive/folders/ID
@@ -37,13 +74,57 @@ export default function Landing({ onStart, onOpenFilter }: { onStart: (folderId:
 
   return (
     <div className="flex flex-col items-center justify-center flex-1 bg-sky-50 p-4 font-sans relative">
+      <div className="absolute top-4 left-4">
+        {userProfile ? (
+          <div className="flex items-center gap-3 bg-white px-3 py-1.5 rounded-full shadow-sm border border-slate-100">
+            {userProfile.photoURL ? (
+              <img src={userProfile.photoURL} alt="Avatar" className="w-8 h-8 rounded-full" />
+            ) : (
+              <div className="w-8 h-8 rounded-full bg-sky-100 flex items-center justify-center text-sky-500 font-bold">
+                {userProfile.displayName?.charAt(0) || userProfile.email?.charAt(0)}
+              </div>
+            )}
+            <div className="flex flex-col hidden sm:flex">
+              <span className="text-xs font-bold text-slate-700">{userProfile.displayName || userProfile.email}</span>
+              <span className="text-[10px] font-bold text-sky-500 uppercase flex items-center gap-1">
+                {userProfile.role === 'vip' && <Crown className="w-3 h-3" />}
+                {userProfile.role === 'admin' && <Crown className="w-3 h-3 text-rose-500" />}
+                {userProfile.role}
+              </span>
+            </div>
+            
+            {userProfile.role === 'admin' && (
+              <button 
+                onClick={() => window.history.pushState({}, '', '?admin=true')}
+                className="ml-2 px-3 py-1 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-full text-xs font-bold transition-colors hidden sm:block border border-rose-200"
+              >
+                Quản lý User
+              </button>
+            )}
+
+            <button onClick={handleLogout} className="p-1.5 text-slate-400 hover:text-rose-500 transition-colors ml-2" title="Đăng xuất">
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
+        ) : (
+          <button 
+            onClick={handleLogin}
+            disabled={authLoading}
+            className="flex items-center gap-2 px-4 py-2 bg-white rounded-full shadow hover:bg-slate-50 transition font-bold text-slate-600 text-sm border border-slate-100"
+          >
+            {authLoading ? <div className="w-4 h-4 rounded-full border-2 border-slate-300 border-t-sky-500 animate-spin"></div> : <LogIn className="w-4 h-4 text-sky-500" />}
+            Đăng nhập
+          </button>
+        )}
+      </div>
+
       <div className="absolute top-4 right-4">
         <button 
-          onClick={() => onOpenFilter()}
+          onClick={handleVIPFilterClick}
           className="flex items-center gap-2 px-4 py-2 bg-white rounded-xl shadow hover:bg-slate-50 transition font-bold text-sky-500 text-sm"
         >
           <FolderSync className="w-5 h-5" />
-          Lọc ảnh máy tính
+          Lọc ảnh máy tính (VIP)
         </button>
       </div>
 

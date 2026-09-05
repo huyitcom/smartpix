@@ -1,0 +1,63 @@
+{
+  "projectInfo": {
+    "name": "Smart Pix VIP Authentication",
+    "description": "User authentication and VIP role management for Smart Pix."
+  },
+  "roles": [
+    {
+      "name": "admin",
+      "description": "System administrator with full access."
+    },
+    {
+      "name": "vip",
+      "description": "VIP user who can access premium features like local filtering."
+    },
+    {
+      "name": "user",
+      "description": "Standard authenticated user."
+    }
+  ],
+  "collections": [
+    {
+      "name": "users",
+      "description": "User profiles and roles.",
+      "documentId": "{userId}",
+      "fields": [
+        {
+          "name": "email",
+          "type": "string",
+          "description": "User's email address.",
+          "required": true
+        },
+        {
+          "name": "displayName",
+          "type": "string",
+          "description": "User's display name."
+        },
+        {
+          "name": "photoURL",
+          "type": "string",
+          "description": "User's profile picture URL."
+        },
+        {
+          "name": "role",
+          "type": "string",
+          "description": "User's role (admin, vip, user). Defaults to user.",
+          "required": true
+        },
+        {
+          "name": "createdAt",
+          "type": "timestamp",
+          "description": "When the user was created.",
+          "required": true
+        }
+      ],
+      "rules": {
+        "read": "request.auth != null && request.auth.uid == userId",
+        "create": "request.auth != null && request.auth.uid == userId",
+        "update": "request.auth != null && request.auth.uid == userId && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role']))",
+        "delete": "false"
+      }
+    }
+  ]
+}
