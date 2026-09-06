@@ -329,26 +329,46 @@ export default function Gallery({ folderId, onBack, onOpenFilter }: { folderId: 
                   <div className={`absolute inset-0 transition-colors pointer-events-none ${isSelected ? 'bg-sky-500/20' : 'bg-gradient-to-t from-black/20 to-transparent opacity-0 group-hover:opacity-100'}`}></div>
                   
                   <button 
+                    type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       toggleSelect(file.id);
                     }}
-                    className={`absolute top-3 right-3 w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300 transform active:scale-95 ${
+                    title={isSelected ? "Bỏ chọn ảnh" : "Chọn ảnh này"}
+                    aria-label={isSelected ? "Bỏ chọn ảnh" : "Chọn ảnh này"}
+                    className={`absolute top-2.5 right-2.5 sm:top-3 sm:right-3 w-11 h-11 sm:w-10 sm:h-10 rounded-full flex items-center justify-center transition-all duration-200 transform active:scale-90 z-10 touch-manipulation ${
                       isSelected 
-                        ? 'bg-white/90 text-sky-500 shadow-lg border-2 border-sky-100 scale-100'
-                        : 'bg-black/10 text-white backdrop-blur-md opacity-0 group-hover:opacity-100'
+                        ? 'bg-sky-500 text-white shadow-lg border-2 border-white scale-105' 
+                        : 'bg-black/45 hover:bg-black/60 text-white backdrop-blur-md border border-white/30 shadow-md'
                     }`}
                   >
-                    <Heart className={`w-5 h-5 ${isSelected ? 'fill-current' : ''}`} />
+                    <Heart className={`w-5 h-5 ${isSelected ? 'fill-white text-white' : 'text-white stroke-[2.2]'}`} />
                   </button>
                 </div>
-                <div className="mt-3 px-2 flex justify-between items-center h-5">
-                  {isSelected ? (
-                    <span className="text-[10px] sm:text-xs font-bold text-sky-500 uppercase tracking-wider">Đã chọn</span>
-                  ) : (
-                    <span className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider">Chưa chọn</span>
-                  )}
-                  <span className={`text-[10px] sm:text-xs font-bold truncate max-w-[100px] ${isSelected ? 'text-sky-400' : 'text-slate-400'}`}>{file.name}</span>
+                <div 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleSelect(file.id);
+                  }}
+                  className="mt-3 px-1 flex justify-between items-center h-6 cursor-pointer select-none"
+                  title={isSelected ? "Nhấn để bỏ chọn ảnh" : "Nhấn để chọn ảnh"}
+                >
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleSelect(file.id);
+                    }}
+                    className={`text-[10px] sm:text-xs font-bold px-2.5 py-1 rounded-full transition-all flex items-center gap-1 active:scale-95 ${
+                      isSelected 
+                        ? 'bg-sky-500 text-white shadow-sm' 
+                        : 'bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700'
+                    }`}
+                  >
+                    <Heart className={`w-3 h-3 ${isSelected ? 'fill-white text-white' : 'text-slate-400'}`} />
+                    <span>{isSelected ? 'ĐÃ CHỌN' : 'CHƯA CHỌN'}</span>
+                  </button>
+                  <span className={`text-[10px] sm:text-xs font-bold truncate max-w-[85px] sm:max-w-[110px] ${isSelected ? 'text-sky-500' : 'text-slate-400'}`}>{file.name}</span>
                 </div>
               </div>
             );
@@ -494,8 +514,8 @@ export default function Gallery({ folderId, onBack, onOpenFilter }: { folderId: 
           </div>
 
           {/* Bottom Bar */}
-          <div className="h-16 px-6 flex items-center justify-between text-white/70 absolute bottom-0 left-0 right-0 z-20 bg-gradient-to-t from-black/80 to-transparent">
-            <div className="text-sm truncate max-w-[70%]">
+          <div className="h-16 px-4 sm:px-6 flex items-center justify-between text-white/70 absolute bottom-0 left-0 right-0 z-20 bg-gradient-to-t from-black/85 via-black/50 to-transparent">
+            <div className="text-xs sm:text-sm truncate max-w-[50%] sm:max-w-[70%] font-medium text-white/90">
               {filteredAndSortedFiles[viewingIndex].name}
             </div>
             <button 
@@ -503,11 +523,16 @@ export default function Gallery({ folderId, onBack, onOpenFilter }: { folderId: 
                 e.stopPropagation();
                 toggleSelect(filteredAndSortedFiles[viewingIndex].id);
               }}
-              className="p-2 transition-colors flex items-center"
+              className={`px-4 py-2 rounded-full font-bold text-xs sm:text-sm flex items-center gap-2 transition-all shadow-md active:scale-95 ${
+                selectedIds.has(filteredAndSortedFiles[viewingIndex].id)
+                  ? 'bg-sky-500 text-white shadow-sky-500/40 ring-2 ring-white/30'
+                  : 'bg-white/20 hover:bg-white/30 text-white backdrop-blur-md border border-white/20'
+              }`}
             >
               <Heart 
-                className={`w-7 h-7 ${selectedIds.has(filteredAndSortedFiles[viewingIndex].id) ? 'fill-sky-500 text-sky-500 drop-shadow-[0_0_8px_rgba(14,165,233,0.5)]' : 'text-white/70 hover:text-white'}`} 
+                className={`w-4 h-4 sm:w-5 sm:h-5 ${selectedIds.has(filteredAndSortedFiles[viewingIndex].id) ? 'fill-white text-white' : 'text-white'}`} 
               />
+              <span>{selectedIds.has(filteredAndSortedFiles[viewingIndex].id) ? 'Đã chọn ảnh' : 'Chọn ảnh này'}</span>
             </button>
           </div>
         </div>
