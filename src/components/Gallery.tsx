@@ -96,7 +96,9 @@ export default function Gallery({ folderId, onBack, onOpenFilter }: { folderId: 
   const handleDownload = () => {
     if (selectedIds.size === 0) return;
     
-    const selectedFiles = files.filter(f => selectedIds.has(f.id));
+    const selectedFiles = files
+      .filter(f => selectedIds.has(f.id))
+      .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
     const text = selectedFiles.map(f => f.name).join('\n');
     const blob = new Blob([text], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
@@ -110,8 +112,8 @@ export default function Gallery({ folderId, onBack, onOpenFilter }: { folderId: 
   const filteredAndSortedFiles = files
     .filter(f => filterMode === 'all' || (filterMode === 'selected' ? selectedIds.has(f.id) : !selectedIds.has(f.id)))
     .sort((a, b) => {
-      if (sortMode === 'name-asc') return a.name.localeCompare(b.name);
-      if (sortMode === 'name-desc') return b.name.localeCompare(a.name);
+      if (sortMode === 'name-asc') return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+      if (sortMode === 'name-desc') return b.name.localeCompare(a.name, undefined, { numeric: true, sensitivity: 'base' });
       if (sortMode === 'date-asc') {
         const timeA = a.createdTime ? new Date(a.createdTime).getTime() : 0;
         const timeB = b.createdTime ? new Date(b.createdTime).getTime() : 0;
@@ -241,7 +243,9 @@ export default function Gallery({ folderId, onBack, onOpenFilter }: { folderId: 
           <button 
             onClick={() => {
               if (selectedIds.size === 0) return;
-              const selectedFiles = files.filter(f => selectedIds.has(f.id));
+              const selectedFiles = files
+                .filter(f => selectedIds.has(f.id))
+                .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
               const text = selectedFiles.map(f => f.name).join(', ');
               onOpenFilter(text);
             }}
@@ -350,25 +354,26 @@ export default function Gallery({ folderId, onBack, onOpenFilter }: { folderId: 
                     e.stopPropagation();
                     toggleSelect(file.id);
                   }}
-                  className="mt-3 px-1 flex justify-between items-center h-6 cursor-pointer select-none"
+                  className="mt-3 px-1.5 flex justify-between items-center h-6 cursor-pointer select-none"
                   title={isSelected ? "Nhấn để bỏ chọn ảnh" : "Nhấn để chọn ảnh"}
                 >
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleSelect(file.id);
-                    }}
-                    className={`text-[10px] sm:text-xs font-bold px-2.5 py-1 rounded-full transition-all flex items-center gap-1 active:scale-95 ${
-                      isSelected 
-                        ? 'bg-sky-500 text-white shadow-sm' 
-                        : 'bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700'
-                    }`}
-                  >
-                    <Heart className={`w-3 h-3 ${isSelected ? 'fill-white text-white' : 'text-slate-400'}`} />
-                    <span>{isSelected ? 'ĐÃ CHỌN' : 'CHƯA CHỌN'}</span>
-                  </button>
-                  <span className={`text-[10px] sm:text-xs font-bold truncate max-w-[85px] sm:max-w-[110px] ${isSelected ? 'text-sky-500' : 'text-slate-400'}`}>{file.name}</span>
+                  {isSelected ? (
+                    <div className="flex items-center gap-1.5 w-full min-w-0">
+                      <span className="w-5 h-5 rounded-full bg-sky-500 text-white flex items-center justify-center shrink-0 shadow-sm">
+                        <Heart className="w-3 h-3 fill-white text-white" />
+                      </span>
+                      <span className="text-xs sm:text-sm font-bold text-sky-600 truncate flex-1">{file.name}</span>
+                    </div>
+                  ) : (
+                    <>
+                      <span className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider shrink-0">
+                        Chưa chọn
+                      </span>
+                      <span className="text-[10px] sm:text-xs font-bold truncate max-w-[65%] text-slate-400 text-right">
+                        {file.name}
+                      </span>
+                    </>
+                  )}
                 </div>
               </div>
             );
