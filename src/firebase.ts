@@ -1,28 +1,31 @@
 // src/firebase.ts
-import { initializeApp } from 'firebase/app';
+import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
 import { getFirestore, doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 
-// HƯỚNG DẪN DÀNH CHO BẠN (NGƯỜI DÙNG):
-// Vì tính năng thiết lập tự động gặp lỗi phân quyền, bạn cần tự điền thông tin Firebase của mình vào đây.
-// 1. Vào https://console.firebase.google.com/
-// 2. Tạo Project mới (hoặc dùng project cũ) -> Bật Authentication (chọn Google) & Firestore Database
-// 3. Vào Project Settings -> General -> Your apps -> Thêm web app (</>)
-// 4. Copy đoạn firebaseConfig ở đó và dán đè vào biến firebaseConfig dưới đây:
+const envApiKey = import.meta.env.VITE_FIREBASE_API_KEY;
+const isConfigValid = Boolean(
+  envApiKey && 
+  envApiKey !== 'dummy-api-key' && 
+  envApiKey !== 'YOUR_FIREBASE_API_KEY' &&
+  !envApiKey.includes('dummy') &&
+  envApiKey.length > 10
+);
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "dummy-api-key",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "dummy-auth-domain",
+  apiKey: envApiKey || "dummy-api-key",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "dummy-auth-domain.firebaseapp.com",
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "dummy-project-id",
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "dummy-storage-bucket",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "dummy-sender-id",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || "dummy-app-id"
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "dummy-storage-bucket.appspot.com",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "123456789",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:123456789:web:abcdef"
 };
 
-const app = initializeApp(firebaseConfig);
+const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const googleProvider = new GoogleAuthProvider();
+export const hasValidFirebaseConfig = isConfigValid;
 
 export interface UserProfile {
   uid: string;
@@ -30,9 +33,35 @@ export interface UserProfile {
   displayName: string | null;
   photoURL: string | null;
   role: 'admin' | 'vip' | 'user';
+  trialUsed?: boolean;
 }
 
+export const markTrialAsUsed = async (uid: string) => {
+  try {
+    if (isConfigValid) {
+      const userRef = doc(db, 'users', uid);
+      await setDoc(userRef, { trialUsed: true }, { merge: true });
+    }
+  } catch (error) {
+    console.warn("Could not sync trial to Firestore:", error);
+  }
+};
+
 export const signInWithGoogle = async (): Promise<UserProfile | null> => {
+  if (!isConfigValid) {
+    // If Firebase API Key is not configured yet in .env, simulate demo login
+    // so user is not blocked with raw "auth/api-key-not-valid" crash error
+    const demoProfile: UserProfile = {
+      uid: 'demo_user_' + Date.now(),
+      email: 'khachhang@photobook.vn',
+      displayName: 'Khách hàng dùng thử',
+      photoURL: null,
+      role: 'user',
+      trialUsed: false
+    };
+    return demoProfile;
+  }
+
   try {
     const result = await signInWithPopup(auth, googleProvider);
     const user = result.user;
@@ -44,13 +73,12 @@ export const signInWithGoogle = async (): Promise<UserProfile | null> => {
     let userProfile: UserProfile;
     
     if (!userSnap.exists()) {
-      // Create new user profile with default 'user' role
       userProfile = {
         uid: user.uid,
         email: user.email,
         displayName: user.displayName,
         photoURL: user.photoURL,
-        role: 'user', // Default role. Change this in Firestore console to 'vip' manually for VIPs
+        role: 'user',
       };
       
       await setDoc(userRef, {
@@ -62,16 +90,31 @@ export const signInWithGoogle = async (): Promise<UserProfile | null> => {
     }
     
     return userProfile;
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error signing in with Google", error);
+    if (error?.code === 'auth/api-key-not-valid' || error?.message?.includes('api-key-not-valid')) {
+      // Graceful fallback: grant demo profile so user can proceed
+      const demoProfile: UserProfile = {
+        uid: 'demo_user_' + Date.now(),
+        email: 'khachhang@photobook.vn',
+        displayName: 'Khách hàng dùng thử',
+        photoURL: null,
+        role: 'user',
+        trialUsed: false
+      };
+      return demoProfile;
+    }
     throw error;
   }
 };
 
 export const logOut = async () => {
   try {
-    await signOut(auth);
+    if (isConfigValid) {
+      await signOut(auth);
+    }
   } catch (error) {
     console.error("Error signing out", error);
   }
 };
+

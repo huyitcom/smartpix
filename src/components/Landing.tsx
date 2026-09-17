@@ -31,14 +31,6 @@ export default function Landing({ onStart, onOpenFilter, userProfile, setUserPro
   };
 
   const handleVIPFilterClick = () => {
-    if (!userProfile) {
-      alert("Vui lòng đăng nhập để sử dụng chức năng này.");
-      return;
-    }
-    if (userProfile.role !== 'vip' && userProfile.role !== 'admin') {
-      alert("Chức năng 'Lọc ảnh máy tính' chỉ dành cho khách hàng VIP. Vui lòng liên hệ Admin để nâng cấp tài khoản.");
-      return;
-    }
     onOpenFilter();
   };
 
@@ -121,10 +113,10 @@ export default function Landing({ onStart, onOpenFilter, userProfile, setUserPro
       <div className="absolute top-4 right-4">
         <button 
           onClick={handleVIPFilterClick}
-          className="flex items-center gap-2 px-4 py-2 bg-white rounded-xl shadow hover:bg-slate-50 transition font-bold text-sky-500 text-sm"
+          className="flex items-center gap-2 px-4 py-2 bg-white rounded-full shadow hover:bg-slate-50 transition font-bold text-sky-500 text-sm border border-slate-100"
         >
-          <FolderSync className="w-5 h-5" />
-          Lọc ảnh máy tính (VIP)
+          <FolderSync className="w-4 h-4 text-sky-500" />
+          Lọc ảnh máy tính
         </button>
       </div>
 

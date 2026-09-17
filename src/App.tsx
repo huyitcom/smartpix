@@ -3,7 +3,8 @@ import Landing from './components/Landing';
 import Gallery from './components/Gallery';
 import LocalFilter from './components/LocalFilter';
 import AdminDashboard from './components/AdminDashboard';
-import { auth, UserProfile, db } from './firebase';
+import VIPAccessModal, { VIPModalStep } from './components/VIPAccessModal';
+import { auth, UserProfile, db, hasValidFirebaseConfig } from './firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 
@@ -12,35 +13,57 @@ export default function App() {
   const [showFilter, setShowFilter] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
   const [initialFileList, setInitialFileList] = useState('');
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(() => {
+    const saved = localStorage.getItem('photobook_local_user');
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) { return null; }
+    }
+    return null;
+  });
+  const [pendingFileList, setPendingFileList] = useState('');
+  const [vipModalStep, setVipModalStep] = useState<VIPModalStep>('closed');
+
+  const updateUserProfile = (profile: UserProfile | null) => {
+    setUserProfile(profile);
+    if (profile) {
+      localStorage.setItem('photobook_local_user', JSON.stringify(profile));
+    } else {
+      localStorage.removeItem('photobook_local_user');
+    }
+  };
 
   useEffect(() => {
-    // Listen for auth state changes
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        try {
-          const userDoc = await getDoc(doc(db, 'users', user.uid));
-          if (userDoc.exists()) {
-            setUserProfile({ uid: user.uid, ...userDoc.data() } as UserProfile);
-          } else {
-            // Fallback if document doesn't exist yet but user is authenticated
-            setUserProfile({
-              uid: user.uid,
-              email: user.email,
-              displayName: user.displayName,
-              photoURL: user.photoURL,
-              role: 'user'
-            });
-          }
-        } catch (error) {
-          console.error("Error fetching user profile", error);
-        }
-      } else {
-        setUserProfile(null);
-      }
-    });
+    if (!hasValidFirebaseConfig) return;
 
-    return () => unsubscribe();
+    // Listen for auth state changes when valid Firebase config is provided
+    try {
+      const unsubscribe = onAuthStateChanged(auth, async (user) => {
+        if (user) {
+          try {
+            const userDoc = await getDoc(doc(db, 'users', user.uid));
+            if (userDoc.exists()) {
+              updateUserProfile({ uid: user.uid, ...userDoc.data() } as UserProfile);
+            } else {
+              updateUserProfile({
+                uid: user.uid,
+                email: user.email,
+                displayName: user.displayName,
+                photoURL: user.photoURL,
+                role: 'user'
+              });
+            }
+          } catch (error) {
+            console.warn("Could not fetch user profile from Firestore:", error);
+          }
+        } else {
+          updateUserProfile(null);
+        }
+      });
+
+      return () => unsubscribe();
+    } catch (e) {
+      console.warn("Auth state listener error:", e);
+    }
   }, []);
 
   useEffect(() => {
@@ -93,6 +116,24 @@ export default function App() {
     setShowFilter(true);
   };
 
+  const handleRequestOpenFilter = (fileList = '') => {
+    setPendingFileList(fileList);
+    if (!userProfile) {
+      setVipModalStep('login_required');
+      return;
+    }
+    if (userProfile.role === 'vip' || userProfile.role === 'admin') {
+      handleOpenFilter(fileList);
+      return;
+    }
+    // Logged in user without VIP role
+    setVipModalStep('customer_check');
+  };
+
+  const handleGrantAccess = () => {
+    handleOpenFilter(pendingFileList);
+  };
+
   const handleCloseFilter = () => {
     setShowFilter(false);
   };
@@ -104,15 +145,23 @@ export default function App() {
       ) : showFilter ? (
         <LocalFilter onBack={handleCloseFilter} initialFileList={initialFileList} />
       ) : folderId ? (
-        <Gallery folderId={folderId} onBack={handleBack} onOpenFilter={handleOpenFilter} />
+        <Gallery folderId={folderId} onBack={handleBack} onOpenFilter={handleRequestOpenFilter} />
       ) : (
         <Landing 
           onStart={handleStart} 
-          onOpenFilter={handleOpenFilter} 
+          onOpenFilter={() => handleRequestOpenFilter('')} 
           userProfile={userProfile}
-          setUserProfile={setUserProfile}
+          setUserProfile={updateUserProfile}
         />
       )}
+
+      <VIPAccessModal
+        step={vipModalStep}
+        onClose={() => setVipModalStep('closed')}
+        userProfile={userProfile}
+        setUserProfile={updateUserProfile}
+        onGrantAccess={handleGrantAccess}
+      />
     </div>
   );
 }
