@@ -85,61 +85,101 @@ app.post("/api/albums/:folderId/selections", async (req, res) => {
   }
 });
 
+async function fetchPublicDriveFolderFallback(folderId: string) {
+  const embedUrl = `https://drive.google.com/embeddedfolderview?id=${encodeURIComponent(folderId)}#list`;
+  const response = await fetch(embedUrl, {
+    headers: {
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    },
+  });
+  if (!response.ok) {
+    throw new Error("Không thể truy cập thư mục Google Drive. Hãy đảm bảo thư mục đã được bật chia sẻ công khai (Bất kỳ ai có đường liên kết).");
+  }
+  const html = await response.text();
+  const files: any[] = [];
+  const entryRegex = /<div class="flip-entry" id="entry-([^"]+)"[\s\S]*?<div class="flip-entry-title">([^<]+)<\/div>/g;
+  let match: RegExpExecArray | null;
+  while ((match = entryRegex.exec(html)) !== null) {
+    const entryBlock = match[0];
+    const id = match[1];
+    const name = match[2].trim();
+    const isImageMime = entryBlock.includes("type/image/") || /\.(jpe?g|png|webp|gif|bmp|heic|tiff?|avif)$/i.test(name);
+    if (!isImageMime) continue;
+
+    const thumbMatch = entryBlock.match(/<div class="flip-entry-thumb"><img src="([^"]+)"/);
+    const thumbnailLink = thumbMatch?.[1]
+      ? thumbMatch[1].replace(/=s\d+$/, "=s220")
+      : `https://lh3.googleusercontent.com/d/${id}=s220`;
+
+    files.push({
+      id,
+      name,
+      thumbnailLink,
+      webContentLink: `https://drive.google.com/uc?id=${id}&export=download`,
+      createdTime: new Date().toISOString(),
+    });
+  }
+  return files;
+}
+
 // API route to proxy Google Drive API requests
 app.get("/api/drive/files", async (req, res) => {
   try {
     const folderId = req.query.folderId as string;
     const apiKey = process.env.GOOGLE_DRIVE_API_KEY;
     
-    if (!apiKey) {
-      return res
-        .status(500)
-        .json({ error: "GOOGLE_DRIVE_API_KEY is not configured on the server." });
-    }
     if (!folderId) {
       return res.status(400).json({ error: "folderId is required" });
     }
 
-    let allFiles: any[] = [];
-    let pageToken = "";
-    
-    // Fetch up to 5 pages (5000 images)
-    let pages = 0;
-    do {
-      const url = new URL("https://www.googleapis.com/drive/v3/files");
-      url.searchParams.append(
-        "q",
-        `'${folderId}' in parents and mimeType contains 'image/' and trashed = false`
-      );
-      url.searchParams.append(
-        "fields",
-        "nextPageToken, files(id, name, thumbnailLink, webContentLink, createdTime)"
-      );
-      url.searchParams.append("pageSize", "1000");
-      url.searchParams.append("key", apiKey);
+    if (apiKey) {
+      try {
+        let allFiles: any[] = [];
+        let pageToken = "";
+        let pages = 0;
+        let apiSucceeded = true;
 
-      if (pageToken) {
-        url.searchParams.append("pageToken", pageToken);
+        do {
+          const url = new URL("https://www.googleapis.com/drive/v3/files");
+          url.searchParams.append(
+            "q",
+            `'${folderId}' in parents and mimeType contains 'image/' and trashed = false`
+          );
+          url.searchParams.append(
+            "fields",
+            "nextPageToken, files(id, name, thumbnailLink, webContentLink, createdTime)"
+          );
+          url.searchParams.append("pageSize", "1000");
+          url.searchParams.append("key", apiKey);
+
+          if (pageToken) {
+            url.searchParams.append("pageToken", pageToken);
+          }
+
+          const response = await fetch(url.toString());
+          if (!response.ok) {
+            apiSucceeded = false;
+            break;
+          }
+
+          const data = await response.json();
+          if (data.files) {
+            allFiles = allFiles.concat(data.files);
+          }
+          pageToken = data.nextPageToken;
+          pages++;
+        } while (pageToken && pages < 5);
+
+        if (apiSucceeded) {
+          return res.json({ files: allFiles });
+        }
+      } catch (e) {
+        console.warn("Drive API fallback triggered:", e);
       }
+    }
 
-      const response = await fetch(url.toString());
-      if (!response.ok) {
-        const errorData = await response.text();
-        console.error("Drive API error:", errorData);
-        return res.status(response.status).json({
-          error: "Failed to fetch from Google Drive. Ensure the folder is public and the ID is correct.",
-        });
-      }
-
-      const data = await response.json();
-      if (data.files) {
-        allFiles = allFiles.concat(data.files);
-      }
-      pageToken = data.nextPageToken;
-      pages++;
-    } while (pageToken && pages < 5);
-
-    res.json({ files: allFiles });
+    const fallbackFiles = await fetchPublicDriveFolderFallback(folderId);
+    res.json({ files: fallbackFiles });
   } catch (error: any) {
     console.error(error);
     res.status(500).json({ error: error.message || "Internal server error" });

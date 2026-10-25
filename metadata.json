@@ -1,5 +1,5 @@
 {
-  "name": "Smart Pix",
+  "name": "Smart Pix AI",
   "description": "Lọc hình từ link Google Drive bằng cách thả tim và lưu danh sách ảnh đã chọn về thiết bị.",
   "requestFramePermissions": [],
   "majorCapabilities": [

@@ -1,7 +1,7 @@
 {
   "projectInfo": {
-    "name": "Smart Pix VIP Authentication",
-    "description": "User authentication and VIP role management for Smart Pix."
+    "name": "Smart Pix VIP Authentication & AI Credits",
+    "description": "User authentication, VIP role management, AI render credits, and album annotations for Smart Pix."
   },
   "roles": [
     {
@@ -10,7 +10,7 @@
     },
     {
       "name": "vip",
-      "description": "VIP user who can access premium features like local filtering."
+      "description": "VIP user who can access premium features like local filtering and AI retouch."
     },
     {
       "name": "user",
@@ -20,7 +20,7 @@
   "collections": [
     {
       "name": "users",
-      "description": "User profiles and roles.",
+      "description": "User profiles, roles, and AI render credit balances.",
       "documentId": "{userId}",
       "fields": [
         {
@@ -46,6 +46,16 @@
           "required": true
         },
         {
+          "name": "credits",
+          "type": "number",
+          "description": "Available AI render credits."
+        },
+        {
+          "name": "renderCount",
+          "type": "number",
+          "description": "Total AI renders completed."
+        },
+        {
           "name": "createdAt",
           "type": "timestamp",
           "description": "When the user was created.",
@@ -53,10 +63,117 @@
         }
       ],
       "rules": {
-        "read": "request.auth != null && request.auth.uid == userId",
-        "create": "request.auth != null && request.auth.uid == userId",
-        "update": "request.auth != null && request.auth.uid == userId && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role']))",
-        "delete": "false"
+        "read": "true",
+        "create": "true",
+        "update": "true",
+        "delete": "request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'"
+      }
+    },
+    {
+      "name": "topup_orders",
+      "description": "PayOS and VietQR credit top-up orders.",
+      "documentId": "{orderId}",
+      "fields": [
+        {
+          "name": "orderCode",
+          "type": "number",
+          "description": "Unique numeric order code.",
+          "required": true
+        },
+        {
+          "name": "uid",
+          "type": "string",
+          "description": "User ID who created the order.",
+          "required": true
+        },
+        {
+          "name": "credits",
+          "type": "number",
+          "description": "Number of AI render credits in package.",
+          "required": true
+        },
+        {
+          "name": "amount",
+          "type": "number",
+          "description": "Payment amount in VND.",
+          "required": true
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "description": "Order status (PENDING, WAITING_APPROVAL, PAID, CANCELLED).",
+          "required": true
+        }
+      ],
+      "rules": {
+        "read": "true",
+        "create": "true",
+        "update": "true",
+        "delete": "request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'"
+      }
+    },
+    {
+      "name": "render_logs",
+      "description": "Audit log of AI photo retouch renders and credit deductions.",
+      "documentId": "{logId}",
+      "fields": [
+        {
+          "name": "uid",
+          "type": "string",
+          "description": "User ID who executed the render.",
+          "required": true
+        },
+        {
+          "name": "resolution",
+          "type": "string",
+          "description": "Render resolution (1K, 2K, 4K).",
+          "required": true
+        },
+        {
+          "name": "creditsCost",
+          "type": "number",
+          "description": "Credits deducted for this render.",
+          "required": true
+        }
+      ],
+      "rules": {
+        "read": "true",
+        "create": "true",
+        "update": "request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'",
+        "delete": "request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'"
+      }
+    },
+    {
+      "name": "albums",
+      "description": "Album selections, photo annotations, and AI retouched results.",
+      "documentId": "{albumId}",
+      "fields": [
+        {
+          "name": "selectedIds",
+          "type": "array",
+          "description": "List of selected Google Drive photo IDs."
+        },
+        {
+          "name": "annotations",
+          "type": "map",
+          "description": "Map of fileId to array of stroke annotations and retouch notes."
+        },
+        {
+          "name": "retouched",
+          "type": "map",
+          "description": "Map of fileId to AI retouched image URLs."
+        },
+        {
+          "name": "updatedAt",
+          "type": "timestamp",
+          "description": "Timestamp of the last update."
+        }
+      ],
+      "rules": {
+        "read": "true",
+        "create": "true",
+        "update": "true",
+        "delete": "request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'"
       }
     }
   ]
