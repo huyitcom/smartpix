@@ -160,8 +160,13 @@ export default function PhotoAnnotationCanvas({
           const ctx = offCanvas.getContext('2d');
           if (!ctx) return reject(new Error('Canvas context failure'));
           ctx.drawImage(img, 0, 0, w, h);
-          const quality = maxDim >= 4096 ? 0.95 : 0.92;
-          const dataUrl = offCanvas.toDataURL('image/jpeg', quality);
+          let quality = maxDim >= 4096 ? 0.92 : 0.90;
+          let dataUrl = offCanvas.toDataURL('image/jpeg', quality);
+          // Keep payload safely under Vercel Serverless Function's 4.5MB body limit (~3.5MB base64 max)
+          while (dataUrl.length > 3500000 && quality > 0.65) {
+            quality -= 0.08;
+            dataUrl = offCanvas.toDataURL('image/jpeg', quality);
+          }
           resolve(dataUrl);
         } catch (e) {
           reject(e);
@@ -477,9 +482,33 @@ export default function PhotoAnnotationCanvas({
         }),
       });
 
-      const data = await response.json();
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Lỗi khi gọi AI xử lý ảnh.');
+      const rawText = await response.text();
+      let data: any = null;
+      try {
+        data = JSON.parse(rawText);
+      } catch {
+        if (response.status === 404 || rawText.includes('Cannot POST /api/ai/retouch')) {
+          throw new Error(
+            'Endpoint /api/ai/retouch chưa có trên bản build Vercel hiện tại. Vui lòng đồng bộ/push code mới nhất (bao gồm file api/index.ts và vercel.json) lên GitHub/Vercel và bấm Redeploy.'
+          );
+        }
+        if (response.status === 413 || rawText.includes('Request Entity Too Large') || rawText.includes('FUNCTION_PAYLOAD_TOO_LARGE')) {
+          throw new Error(
+            'Dung lượng ảnh gửi lên vượt giới hạn 4.5MB của Vercel Serverless. Hãy chọn độ phân giải 1K hoặc 2K và thử lại.'
+          );
+        }
+        if (response.status === 504 || rawText.includes('GATEWAY_TIMEOUT') || rawText.includes('FUNCTION_INVOCATION_TIMEOUT')) {
+          throw new Error(
+            'Thời gian xử lý AI vượt quá giới hạn phản hồi của Vercel. Hãy thử chọn độ phân giải 1K/2K hoặc cập nhật vercel.json (maxDuration: 60).'
+          );
+        }
+        throw new Error(
+          `Máy chủ trả về phản hồi không đúng định dạng JSON (HTTP ${response.status}). Vui lòng đẩy code mới nhất lên Vercel và Redeploy.`
+        );
+      }
+
+      if (!response.ok || !data?.success) {
+        throw new Error(data?.error || 'Lỗi khi gọi AI xử lý ảnh.');
       }
 
       setRetouchStep(4);

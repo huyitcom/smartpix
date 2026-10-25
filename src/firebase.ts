@@ -11,16 +11,14 @@ import {
 } from 'firebase/auth';
 import { getFirestore, doc, getDoc, setDoc, collection, getDocs, serverTimestamp } from 'firebase/firestore';
 
-const envApiKey = import.meta.env.VITE_FIREBASE_API_KEY;
-
-// Real Firebase Web App credentials discovered from Firebase project photo-picker-507413
+// Real Firebase Web App credentials (reads VITE_FIREBASE_* from Vercel/env with fallback to project defaults)
 export const firebaseConfig = {
-  apiKey: "AIzaSyDVETbsjjgEX8D_Nc_8aoF-MP8a4vIwz5E",
-  authDomain: "photo-picker-507413.firebaseapp.com",
-  projectId: "photo-picker-507413",
-  storageBucket: "photo-picker-507413.firebasestorage.app",
-  messagingSenderId: "261494985322",
-  appId: "1:261494985322:web:64f6b771f63d217184b013"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyDVETbsjjgEX8D_Nc_8aoF-MP8a4vIwz5E",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "photo-picker-507413.firebaseapp.com",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "photo-picker-507413",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "photo-picker-507413.firebasestorage.app",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "261494985322",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:261494985322:web:64f6b771f63d217184b013"
 };
 
 // Clear any stale local overrides so official config is always used
