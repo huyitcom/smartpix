@@ -129,11 +129,30 @@ export default function VIPAccessModal({
 
                   <button
                     type="button"
-                    onClick={() => setShowAuthModal(true)}
-                    className="w-full sm:flex-1 py-3 px-4 rounded-2xl font-bold text-white bg-sky-500 hover:bg-sky-600 transition-colors flex items-center justify-center gap-2 shadow-sm text-sm sm:text-base cursor-pointer"
+                    disabled={authLoading}
+                    onClick={async () => {
+                      setAuthLoading(true);
+                      try {
+                        const profile = await signInWithGoogle();
+                        setUserProfile(profile);
+                        if (profile.role === 'vip' || profile.role === 'admin' || (profile.credits ?? 0) > 0) {
+                          onGrantAccess();
+                          onClose();
+                        } else {
+                          setCurrentStep('customer_check');
+                        }
+                      } catch (err: any) {
+                        if (err?.code !== 'auth/popup-closed-by-user') {
+                          setShowAuthModal(true);
+                        }
+                      } finally {
+                        setAuthLoading(false);
+                      }
+                    }}
+                    className="w-full sm:flex-1 py-3 px-4 rounded-2xl font-bold text-white bg-sky-500 hover:bg-sky-600 transition-colors flex items-center justify-center gap-2 shadow-sm text-sm sm:text-base cursor-pointer disabled:opacity-70"
                   >
                     <LogIn className="w-4 h-4" />
-                    <span>Đăng nhập ngay</span>
+                    <span>{authLoading ? 'Đang mở Google...' : 'Đăng nhập Google'}</span>
                   </button>
                 </div>
               </div>

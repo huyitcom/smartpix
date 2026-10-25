@@ -23,7 +23,7 @@ import {
   Shield
 } from 'lucide-react';
 import type { DriveFile, StrokeAnnotation, AlbumAnnotations } from '../types';
-import { db, auth, UserProfile } from '../firebase';
+import { db, auth, UserProfile, signInWithGoogle } from '../firebase';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import PhotoAnnotationCanvas from './PhotoAnnotationCanvas';
 import AuthModal from './AuthModal';
@@ -63,6 +63,21 @@ export default function Gallery({
   const [isDrawingMode, setIsDrawingMode] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
+
+  const handleDirectGoogleLogin = async () => {
+    setGoogleLoading(true);
+    try {
+      const profile = await signInWithGoogle();
+      if (setUserProfile) setUserProfile(profile);
+    } catch (err: any) {
+      if (err?.code !== 'auth/popup-closed-by-user') {
+        setShowAuthModal(true);
+      }
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
 
   const isVIP = userProfile?.role === 'vip' || userProfile?.role === 'admin';
 
@@ -476,14 +491,20 @@ export default function Gallery({
       
       {/* Floating Counter Badge */}
       <div className="fixed right-0 top-1/2 -translate-y-1/2 flex flex-col gap-2 z-40">
-        <div className="bg-sky-400 text-white px-3 py-3 rounded-l-2xl shadow-lg flex flex-col items-center justify-center font-bold border-l-2 border-y-2 border-white/20">
+        <button
+          type="button"
+          onClick={() => setFilterMode('selected')}
+          className="bg-sky-400 hover:bg-sky-500 text-white px-3 py-3 rounded-l-2xl shadow-lg flex flex-col items-center justify-center font-bold border-l-2 border-y-2 border-white/20 transition-transform active:scale-95 cursor-pointer"
+          title="Xem các ảnh đã chọn"
+        >
           <span className="text-lg md:text-xl leading-none mb-1">{selectedIds.size}</span>
           <Heart className="w-5 h-5 fill-current text-white" />
-        </div>
+        </button>
         {totalAnnotatedPhotos > 0 && (
           <button
+            type="button"
             onClick={() => setFilterMode('annotated')}
-            className="bg-red-600 hover:bg-red-500 text-white px-3 py-2.5 rounded-l-2xl shadow-lg flex flex-col items-center justify-center font-bold border-l-2 border-y-2 border-white/20 transition-transform active:scale-95"
+            className="bg-red-600 hover:bg-red-500 text-white px-3 py-2.5 rounded-l-2xl shadow-lg flex flex-col items-center justify-center font-bold border-l-2 border-y-2 border-white/20 transition-transform active:scale-95 cursor-pointer"
             title="Xem các ảnh có ghi chú sửa"
           >
             <span className="text-sm md:text-base leading-none mb-1">{totalAnnotatedPhotos}</span>
@@ -531,18 +552,6 @@ export default function Gallery({
         </div>
 
         <div className="flex items-center gap-2.5">
-          {/* Export All Annotations Button */}
-          {totalAnnotatedPhotos > 0 && (
-            <button
-              onClick={handleExportAllAnnotations}
-              className="px-3.5 md:px-5 py-2 md:py-2.5 rounded-full font-bold shadow-md flex items-center gap-1.5 bg-red-600 hover:bg-red-500 text-white transition-all cursor-pointer text-xs md:text-sm"
-              title="Xuất file tổng hợp các yêu cầu chỉnh sửa của album"
-            >
-              <FileText className="w-4 h-4" />
-              <span className="hidden sm:inline">Xuất ghi chú ({totalAnnotatedPhotos})</span>
-            </button>
-          )}
-
           <button 
             onClick={handleDownload}
             disabled={selectedIds.size === 0}
@@ -573,7 +582,7 @@ export default function Gallery({
             }`}
           >
             <FolderSync className="w-4 h-4 md:w-5 md:h-5" />
-            <span className="hidden sm:inline">Lọc ảnh máy tính</span>
+            <span className="hidden sm:inline">Lọc ảnh</span>
           </button>
 
           {/* Admin Panel Button */}
@@ -615,11 +624,16 @@ export default function Gallery({
             </button>
           ) : (
             <button
-              onClick={() => setShowAuthModal(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 hover:text-sky-600 rounded-full text-xs font-bold border border-slate-200 shadow-2xs transition cursor-pointer"
+              onClick={handleDirectGoogleLogin}
+              disabled={googleLoading}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 hover:text-sky-600 rounded-full text-xs font-bold border border-slate-200 shadow-2xs transition cursor-pointer disabled:opacity-70"
             >
-              <LogIn className="w-3.5 h-3.5 text-sky-500" />
-              <span>Đăng nhập</span>
+              {googleLoading ? (
+                <Loader2 className="w-3.5 h-3.5 text-sky-500 animate-spin" />
+              ) : (
+                <LogIn className="w-3.5 h-3.5 text-sky-500" />
+              )}
+              <span>{googleLoading ? 'Đang mở Google...' : 'Đăng nhập'}</span>
             </button>
           )}
         </div>

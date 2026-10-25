@@ -5,13 +5,12 @@ import {
   ShieldCheck, 
   User as UserIcon, 
   LogOut, 
-  KeyRound, 
   CheckCircle2, 
   AlertCircle,
   Sparkles,
-  PhoneCall
+  Loader2
 } from 'lucide-react';
-import { UserProfile, validateAccessCode, syncUserCreditsWithServer, logOut } from '../firebase';
+import { UserProfile, signInWithGoogle, logOut } from '../firebase';
 
 interface UserProfileModalProps {
   isOpen: boolean;
@@ -28,40 +27,30 @@ export default function UserProfileModal({
   onClose,
   userProfile,
   setUserProfile,
-  onOpenAuthModal,
   onOpenTopupModal,
   onOpenAdmin,
 }: UserProfileModalProps) {
-  const [vipCode, setVipCode] = useState('');
+  const [switchingAccount, setSwitchingAccount] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   if (!isOpen || !userProfile) return null;
 
-  const handleActivateVIP = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!vipCode.trim()) {
-      setFeedback({ type: 'error', message: 'Vui lòng nhập mã kích hoạt VIP.' });
-      return;
-    }
-
-    const check = validateAccessCode(vipCode.trim());
-    if (check.valid && check.role) {
-      const nextRole = userProfile.role === 'admin' ? 'admin' : check.role;
-      const updated: UserProfile = {
-        ...userProfile,
-        role: nextRole,
-        vipActivatedAt: new Date().toISOString(),
-        vipCodeUsed: vipCode.trim().toUpperCase()
-      };
-      setUserProfile(updated);
-      syncUserCreditsWithServer(updated).then((synced) => setUserProfile(synced)).catch(() => {});
-      setFeedback({ 
-        type: 'success', 
-        message: `Kích hoạt thành công! Quyền hiện tại của bạn: ${nextRole.toUpperCase()} 👑` 
-      });
-      setVipCode('');
-    } else {
-      setFeedback({ type: 'error', message: check.message });
+  const handleSwitchGoogleAccount = async () => {
+    setSwitchingAccount(true);
+    setFeedback(null);
+    try {
+      const profile = await signInWithGoogle();
+      setUserProfile(profile);
+      onClose();
+    } catch (err: any) {
+      if (err?.code !== 'auth/popup-closed-by-user') {
+        setFeedback({
+          type: 'error',
+          message: err?.message || 'Không thể mở cửa sổ đăng nhập Google lúc này.'
+        });
+      }
+    } finally {
+      setSwitchingAccount(false);
     }
   };
 
@@ -83,7 +72,7 @@ export default function UserProfileModal({
         {/* Close Button */}
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 transition"
+          className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 transition cursor-pointer"
           aria-label="Đóng"
         >
           <X className="w-5 h-5" />
@@ -157,7 +146,7 @@ export default function UserProfileModal({
         )}
 
         {/* AI Render Credit Balance Card */}
-        <div className="bg-slate-900 text-white rounded-2xl p-4 mb-4 flex items-center justify-between gap-3 shadow-md">
+        <div className="bg-slate-900 text-white rounded-2xl p-4 mb-5 flex items-center justify-between gap-3 shadow-md">
           <div>
             <div className="text-[11px] text-slate-400 font-semibold mb-0.5">
               Số dư Lượt Render AI khả dụng
@@ -199,66 +188,16 @@ export default function UserProfileModal({
           </div>
         </div>
 
-        {/* VIP Status card */}
-        {isVIP ? (
-          <div className="bg-gradient-to-br from-amber-500/15 via-amber-500/5 to-purple-500/5 border border-amber-300 rounded-2xl p-4 mb-4 text-left">
-            <div className="flex items-center gap-2 font-bold text-amber-900 text-sm mb-1.5">
-              <Crown className="w-4 h-4 text-amber-500" />
-              <span>Đặc quyền VIP đã kích hoạt</span>
-            </div>
-            <ul className="text-xs text-amber-900/90 space-y-1">
-              <li className="flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                <span><strong>AI Retouch trực tiếp:</strong> Tự động sửa ảnh theo nét vẽ khoanh đỏ và ghi chú</span>
-              </li>
-              <li className="flex items-center gap-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                <span><strong>Lọc ảnh máy tính:</strong> Tự động copy ảnh chọn vào thư mục trên ổ cứng</span>
-              </li>
-              <li className="flex items-center gap-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                <span><strong>Xuất danh sách:</strong> Không giới hạn số lượng ảnh tải về</span>
-              </li>
-            </ul>
-          </div>
-        ) : (
-          <form onSubmit={handleActivateVIP} className="bg-slate-50 border border-slate-200 rounded-2xl p-4 mb-4 text-left">
-            <div className="flex items-center gap-2 font-bold text-slate-800 text-xs mb-1">
-              <Crown className="w-4 h-4 text-amber-500" />
-              <span>Nâng cấp lên VIP (Nhập mã kích hoạt)</span>
-            </div>
-            <p className="text-[11px] text-slate-500 mb-2">
-              Nhập mã VIP để mở khóa AI Retouch ảnh ghi chú và các quyền lợi đặc biệt:
-            </p>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={vipCode}
-                onChange={(e) => setVipCode(e.target.value)}
-                placeholder="Mã: PHOTOBOOKVIP..."
-                className="flex-1 px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold uppercase outline-none focus:border-amber-500"
-              />
-              <button
-                type="submit"
-                className="px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-bold rounded-xl text-xs shadow-xs cursor-pointer"
-              >
-                Kích hoạt
-              </button>
-            </div>
-          </form>
-        )}
-
         {/* Action Buttons */}
         <div className="flex items-center gap-3 w-full">
           <button
             type="button"
-            onClick={() => {
-              onClose();
-              onOpenAuthModal();
-            }}
-            className="flex-1 py-2.5 px-4 rounded-xl font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 transition text-xs sm:text-sm cursor-pointer"
+            disabled={switchingAccount}
+            onClick={handleSwitchGoogleAccount}
+            className="flex-1 py-2.5 px-4 rounded-xl font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 transition text-xs sm:text-sm flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-60"
           >
-            Đổi tài khoản
+            {switchingAccount && <Loader2 className="w-4 h-4 animate-spin text-sky-500" />}
+            <span>Đổi tài khoản</span>
           </button>
 
           <button

@@ -163,13 +163,6 @@ export default function Landing({
               )}
               <span>{googleLoading ? 'Đang mở Google...' : 'Đăng nhập Google'}</span>
             </button>
-            <button
-              onClick={() => setShowAuthModal(true)}
-              className="text-[11px] font-semibold text-slate-500 hover:text-sky-600 bg-white/80 hover:bg-white px-2.5 py-2 rounded-full border border-slate-200 transition cursor-pointer"
-              title="Tùy chọn đăng nhập khác (Mã VIP, Email)"
-            >
-              Khác
-            </button>
           </div>
         )}
       </div>
