@@ -20,7 +20,8 @@ import {
   Sparkles,
   LogIn,
   QrCode,
-  Shield
+  Shield,
+  ExternalLink
 } from 'lucide-react';
 import type { DriveFile, StrokeAnnotation, AlbumAnnotations } from '../types';
 import { db, auth, UserProfile, signInWithGoogle } from '../firebase';
@@ -56,6 +57,7 @@ export default function Gallery({
   const [retouchedImages, setRetouchedImages] = useState<Record<string, string>>({});
   const [syncStatus, setSyncStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [copied, setCopied] = useState(false);
+  const [copiedDrive, setCopiedDrive] = useState(false);
   const [filterMode, setFilterMode] = useState<'all' | 'selected' | 'unselected' | 'annotated'>('all');
   const [sortMode, setSortMode] = useState<'name-asc' | 'name-desc' | 'date-asc' | 'date-desc'>('name-asc');
   const [viewingIndex, setViewingIndex] = useState<number | null>(null);
@@ -80,13 +82,21 @@ export default function Gallery({
   };
 
   const isVIP = userProfile?.role === 'vip' || userProfile?.role === 'admin';
+  const isAdmin = userProfile?.role === 'admin';
 
   const shareUrl = typeof window !== 'undefined' ? `${window.location.origin}/?folder=${folderId}` : '';
+  const driveUrl = `https://drive.google.com/drive/folders/${folderId}`;
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(shareUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleCopyDriveLink = () => {
+    navigator.clipboard.writeText(driveUrl);
+    setCopiedDrive(true);
+    setTimeout(() => setCopiedDrive(false), 2000);
   };
 
   // LocalStorage instant backup key for this folder
@@ -638,6 +648,48 @@ export default function Gallery({
           )}
         </div>
       </header>
+
+      {/* Admin Original Google Drive Folder Link Bar */}
+      {isAdmin && (
+        <div className="bg-amber-50/90 border-b border-amber-200 px-4 md:px-8 py-2 flex flex-wrap items-center justify-center gap-2 z-10 shrink-0">
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-500 text-slate-950 text-[11px] font-black uppercase tracking-wider shrink-0">
+            <Shield className="w-3 h-3" />
+            Link Google Drive gốc:
+          </span>
+          <div className="relative flex items-center flex-1 max-w-xl min-w-[240px]">
+            <input
+              type="text"
+              value={driveUrl}
+              readOnly
+              onClick={(e) => (e.target as HTMLInputElement).select()}
+              className="w-full pl-3.5 pr-44 py-1.5 bg-white border border-amber-300 rounded-full text-xs text-slate-700 font-semibold outline-none truncate shadow-2xs"
+            />
+            <div className="absolute right-1 top-1 bottom-1 flex items-center gap-1">
+              <button
+                type="button"
+                onClick={handleCopyDriveLink}
+                className={`px-2.5 h-full font-bold rounded-full text-[11px] transition-colors cursor-pointer ${
+                  copiedDrive
+                    ? 'bg-emerald-100 text-emerald-700'
+                    : 'bg-amber-100 hover:bg-amber-200 text-amber-900'
+                }`}
+              >
+                {copiedDrive ? 'Đã copy' : 'Copy Drive'}
+              </button>
+              <a
+                href={driveUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-2.5 h-full bg-sky-500 hover:bg-sky-600 text-white font-bold rounded-full text-[11px] flex items-center gap-1 transition-colors"
+                title="Mở thư mục Google Drive gốc trong tab mới"
+              >
+                <span>Mở Drive</span>
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="bg-white border-b-2 border-sky-50 px-4 md:px-8 py-3 flex flex-col md:flex-row items-center justify-center gap-3 shrink-0">
