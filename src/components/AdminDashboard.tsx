@@ -23,6 +23,10 @@ import {
   ExternalLink,
   FolderOpen,
   Image as ImageIcon,
+  Upload,
+  Trash2,
+  Save,
+  Eye,
 } from 'lucide-react';
 import {
   UserProfile,
@@ -31,6 +35,15 @@ import {
   fetchAllLinkHistory,
   LinkHistoryItem,
 } from '../firebase';
+import { BannersConfig } from '../types';
+import {
+  fetchBannersConfig,
+  saveBannersConfig,
+  DEFAULT_BANNERS_CONFIG,
+  DEFAULT_LEFT_BANNER_IMAGE,
+  DEFAULT_RIGHT_BANNER_IMAGE,
+} from '../services/bannerService';
+import { compressBannerImage } from '../utils/imageCompressor';
 
 interface AdminUserRecord {
   uid: string;
@@ -87,11 +100,15 @@ export default function AdminDashboard({
   currentUser,
   onUpdateCurrentUser,
 }: AdminDashboardProps) {
-  const [activeTab, setActiveTab] = useState<'members' | 'orders' | 'logs' | 'links'>('members');
+  const [activeTab, setActiveTab] = useState<'members' | 'orders' | 'logs' | 'links' | 'banners'>('members');
   const [users, setUsers] = useState<AdminUserRecord[]>([]);
   const [orders, setOrders] = useState<AdminTopupOrder[]>([]);
   const [renderLogs, setRenderLogs] = useState<AdminRenderLog[]>([]);
   const [links, setLinks] = useState<LinkHistoryItem[]>([]);
+  const [bannersConfig, setBannersConfig] = useState<BannersConfig>(DEFAULT_BANNERS_CONFIG);
+  const [bannersSaving, setBannersSaving] = useState(false);
+  const [bannersLoaded, setBannersLoaded] = useState(false);
+  const [bannerOptimizing, setBannerOptimizing] = useState<{ left?: boolean; right?: boolean }>({});
   const [copiedLinkId, setCopiedLinkId] = useState<string | null>(null);
   const [copiedDriveId, setCopiedDriveId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -132,9 +149,78 @@ export default function AdminDashboard({
     setTimeout(() => setCopiedDriveId(null), 2000);
   };
 
+  const handleBannerUpload = async (side: 'left' | 'right', e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 20 * 1024 * 1024) {
+      showToast('⚠️ Kích thước file tối đa là 20MB');
+      return;
+    }
+
+    setBannerOptimizing((prev) => ({ ...prev, [side]: true }));
+    try {
+      showToast(`⏳ Đang tối ưu & nén ảnh cho Banner ${side === 'left' ? 'Trái' : 'Phải'}...`);
+      const { dataUrl, sizeKb, originalSizeKb } = await compressBannerImage(file);
+
+      setBannersConfig((prev) => ({
+        ...prev,
+        [side === 'left' ? 'leftBanner' : 'rightBanner']: {
+          ...prev[side === 'left' ? 'leftBanner' : 'rightBanner'],
+          imageUrl: dataUrl,
+        },
+      }));
+      setBannersLoaded(true);
+      showToast(`✓ Đã nạp ảnh thành công (${originalSizeKb} KB ➜ ${sizeKb} KB - Siêu nhẹ, nét căng)! Nhớ bấm 'LƯU 2 BANNER NGAY'.`);
+    } catch (err: any) {
+      console.error('Error compressing banner:', err);
+      showToast(`⚠️ Không thể xử lý ảnh: ${err?.message || 'Vui lòng thử file ảnh khác'}`);
+    } finally {
+      setBannerOptimizing((prev) => ({ ...prev, [side]: false }));
+      e.target.value = '';
+    }
+  };
+
+  const handleSaveBannersAction = async () => {
+    setBannersSaving(true);
+    try {
+      const ok = await saveBannersConfig(bannersConfig);
+      if (ok) {
+        setBannersLoaded(true);
+        showToast('✓ Đã lưu cấu hình 2 banner quảng cáo thành công!');
+      } else {
+        showToast('⚠️ Lỗi khi lưu banner, vui lòng thử lại');
+      }
+    } catch {
+      showToast('⚠️ Lỗi lưu banner');
+    } finally {
+      setBannersSaving(false);
+    }
+  };
+
+  const handleResetSideBanner = (side: 'left' | 'right') => {
+    setBannersConfig((prev) => ({
+      ...prev,
+      [side === 'left' ? 'leftBanner' : 'rightBanner']: {
+        ...prev[side === 'left' ? 'leftBanner' : 'rightBanner'],
+        imageUrl: side === 'left' ? DEFAULT_LEFT_BANNER_IMAGE : DEFAULT_RIGHT_BANNER_IMAGE,
+      },
+    }));
+    setBannersLoaded(true);
+    showToast(`✓ Đã khôi phục ảnh mẫu cho Banner ${side === 'left' ? 'Trái' : 'Phải'}. Bấm 'Lưu' để áp dụng!`);
+  };
+
   const fetchOverview = useCallback(async () => {
     setLoading(true);
     try {
+      // 0. Pull current ad banners configuration if not loaded yet
+      if (!bannersLoaded) {
+        fetchBannersConfig().then((b) => {
+          setBannersConfig(b);
+          setBannersLoaded(true);
+        });
+      }
+
       // 1. Pull link creation history from both Firestore and Server store
       const fetchedLinks = await fetchAllLinkHistory();
       setLinks(fetchedLinks);
@@ -498,7 +584,7 @@ export default function AdminDashboard({
             </div>
           </div>
 
-          {/* 4 Navigation Tabs + Close Button */}
+          {/* 5 Navigation Tabs + Close Button */}
           <div className="flex items-center gap-2 flex-wrap ml-auto">
             <div className="bg-[#0a0e19] p-1 rounded-2xl border border-slate-800 flex items-center gap-1">
               <button
@@ -525,6 +611,19 @@ export default function AdminDashboard({
               >
                 <Link2 className="w-3.5 h-3.5" />
                 <span>Lịch Sử Tạo Link ({links.length})</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('banners')}
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
+                  activeTab === 'banners'
+                    ? 'bg-indigo-600 text-white shadow'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <ImageIcon className="w-3.5 h-3.5" />
+                <span>Banner 2 Bên Sườn</span>
               </button>
 
               <button
@@ -1288,6 +1387,557 @@ export default function AdminDashboard({
                     </tbody>
                   </table>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 5: QUẢN LÝ 2 BANNER HÌNH ẢNH 2 BÊN SƯỜN MÀN HÌNH */}
+          {activeTab === 'banners' && (
+            <div className="space-y-6">
+              {/* Header Box & Save Controls */}
+              <div className="bg-[#121728] border border-slate-800/90 rounded-2xl p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-xl">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 font-black text-[11px] uppercase tracking-wider border border-indigo-500/30">
+                      Giao Diện Trang Chủ
+                    </span>
+                    <span className="text-emerald-400 text-xs font-bold flex items-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      Mặc định hiển thị 2 bên sườn
+                    </span>
+                  </div>
+                  <h2 className="text-lg font-black text-white">
+                    Quản Lý Hình Ảnh 2 Banner Quảng Cáo Sườn Màn Hình
+                  </h2>
+                  <p className="text-xs text-slate-400 mt-1 max-w-2xl leading-relaxed">
+                    Tải lên 1 tấm hình cho mỗi banner (không cần text). Hình ảnh sẽ xuất hiện cố định ở 2 bên sườn màn hình máy tính và bên dưới trang trên di động.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 w-full md:w-auto">
+                  <a
+                    href="/"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer border border-slate-700 shrink-0"
+                    title="Mở tab mới xem trực tiếp trang chủ"
+                  >
+                    <Eye className="w-4 h-4" />
+                    <span>Xem trang chủ</span>
+                  </a>
+
+                  <button
+                    type="button"
+                    disabled={bannersSaving}
+                    onClick={handleSaveBannersAction}
+                    className="flex-1 md:flex-initial px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-black flex items-center justify-center gap-2 transition shadow-lg shadow-emerald-600/30 cursor-pointer active:scale-98"
+                  >
+                    {bannersSaving ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Save className="w-4 h-4" />
+                    )}
+                    <span>{bannersSaving ? 'Đang lưu...' : 'LƯU 2 BANNER NGAY'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* 2 Banner Columns */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* 1. BANNER BÊN TRÁI (LEFT SIDE) */}
+                <div className="bg-[#121728] border border-slate-800/90 rounded-3xl p-6 shadow-xl flex flex-col justify-between space-y-5">
+                  <div className="space-y-4">
+                    {/* Header + Toggle */}
+                    <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                      <div>
+                        <div className="text-[11px] font-extrabold uppercase tracking-wider text-rose-400">
+                          CỘT TRÁI (LEFT SIDEBAR)
+                        </div>
+                        <h3 className="text-base font-black text-white mt-0.5">
+                          Banner Quảng Cáo Bên Trái
+                        </h3>
+                      </div>
+
+                      <label className="flex items-center gap-2 cursor-pointer select-none">
+                        <span className="text-xs font-bold text-slate-300">
+                          {bannersConfig.leftBanner.enabled ? 'Đang Bật' : 'Đang Tắt'}
+                        </span>
+                        <input
+                          type="checkbox"
+                          checked={bannersConfig.leftBanner.enabled}
+                          onChange={(e) =>
+                            setBannersConfig((prev) => ({
+                              ...prev,
+                              leftBanner: { ...prev.leftBanner, enabled: e.target.checked },
+                            }))
+                          }
+                          className="w-5 h-5 accent-rose-500 rounded cursor-pointer"
+                        />
+                      </label>
+                    </div>
+
+                    {/* Preview box */}
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="text-xs font-bold text-slate-300">
+                          Hình ảnh hiển thị (Xem trước):
+                        </label>
+                        {bannersConfig.leftBanner.imageUrl?.startsWith('data:') && (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
+                            ✓ Ảnh đã nén & tối ưu sẵn sàng
+                          </span>
+                        )}
+                      </div>
+                      <div className="relative group rounded-2xl overflow-hidden border-2 border-dashed border-slate-700 bg-[#0a0e1a] p-3 flex items-center justify-center min-h-[300px]">
+                        {bannerOptimizing.left ? (
+                          <div className="flex flex-col items-center gap-2 py-12 text-rose-400">
+                            <Loader2 className="w-8 h-8 animate-spin" />
+                            <span className="text-xs font-bold">Đang nén & tối ưu ảnh...</span>
+                          </div>
+                        ) : bannersConfig.leftBanner.imageUrl ? (
+                          <div className="relative max-w-[200px] w-full mx-auto">
+                            <img
+                              src={bannersConfig.leftBanner.imageUrl}
+                              alt="Banner trái"
+                              className="w-full h-auto max-h-[380px] object-contain rounded-xl shadow-lg border border-slate-700"
+                              onError={(e) => {
+                                (e.target as HTMLElement).style.display = 'none';
+                              }}
+                            />
+                            <div className="text-center text-[10px] text-slate-500 mt-2">
+                              Kích thước khuyến nghị: 240 x 500px (Dạng ảnh đứng)
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="text-center text-slate-500 text-xs">
+                            Chưa có ảnh banner. Hãy tải ảnh lên.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Upload button & restore default */}
+                    <div className="flex items-center gap-2 pt-1 flex-wrap">
+                      <label className="flex-1 min-w-[170px] px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs flex items-center justify-center gap-2 cursor-pointer shadow transition active:scale-98">
+                        <Upload className="w-4 h-4" />
+                        <span>Tải ảnh từ máy tính</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => handleBannerUpload('left', e)}
+                        />
+                      </label>
+
+                      <button
+                        type="button"
+                        onClick={() => handleResetSideBanner('left')}
+                        className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-semibold text-xs transition cursor-pointer border border-slate-700"
+                        title="Khôi phục ảnh mẫu ban đầu"
+                      >
+                        Khôi phục ảnh mẫu
+                      </button>
+                    </div>
+
+                    {/* Direct image URL input (Optional alternative) */}
+                    <div className="space-y-1.5 pt-1">
+                      <label className="block text-xs font-bold text-slate-300">
+                        Hoặc nhập link URL ảnh trực tiếp (Tùy chọn):
+                      </label>
+                      <input
+                        type="text"
+                        value={bannersConfig.leftBanner.imageUrl?.startsWith('data:') ? '' : (bannersConfig.leftBanner.imageUrl || '')}
+                        onChange={(e) => {
+                          const val = e.target.value.trim();
+                          if (val) {
+                            setBannersConfig((prev) => ({
+                              ...prev,
+                              leftBanner: { ...prev.leftBanner, imageUrl: val },
+                            }));
+                            setBannersLoaded(true);
+                          }
+                        }}
+                        placeholder="https://... (Nếu có sẵn link ảnh online)"
+                        className="w-full px-3.5 py-2 rounded-xl bg-[#0a0e19] border border-slate-700 text-white text-xs placeholder-slate-500 outline-none focus:border-rose-500 transition"
+                      />
+                    </div>
+
+                    {/* Width setting (Bề ngang px - chiều cao tự co giãn theo tỷ lệ) */}
+                    <div className="space-y-2 pt-2 bg-[#0a0e19] p-3.5 rounded-2xl border border-slate-800">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                          <SlidersHorizontal className="w-3.5 h-3.5 text-rose-400" />
+                          <span>Bề ngang banner (Chiều rộng):</span>
+                        </label>
+                        <div className="flex items-center gap-1 bg-[#121728] px-2.5 py-1 rounded-xl border border-slate-700">
+                          <input
+                            type="number"
+                            min={160}
+                            max={450}
+                            value={bannersConfig.leftBanner.width || 260}
+                            onChange={(e) => {
+                              const val = Math.max(160, Math.min(500, Number(e.target.value) || 260));
+                              setBannersConfig((prev) => ({
+                                ...prev,
+                                leftBanner: { ...prev.leftBanner, width: val },
+                              }));
+                              setBannersLoaded(true);
+                            }}
+                            className="w-12 text-center text-xs font-black text-rose-300 bg-transparent outline-none"
+                          />
+                          <span className="text-xs text-slate-400 font-bold">px</span>
+                        </div>
+                      </div>
+
+                      {/* Slider */}
+                      <input
+                        type="range"
+                        min={160}
+                        max={420}
+                        step={10}
+                        value={bannersConfig.leftBanner.width || 260}
+                        onChange={(e) => {
+                          const val = Number(e.target.value);
+                          setBannersConfig((prev) => ({
+                            ...prev,
+                            leftBanner: { ...prev.leftBanner, width: val },
+                          }));
+                          setBannersLoaded(true);
+                        }}
+                        className="w-full accent-rose-500 cursor-pointer"
+                      />
+
+                      {/* Quick preset buttons */}
+                      <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                        {[
+                          { label: '200px (Nhỏ)', w: 200 },
+                          { label: '250px (Vừa)', w: 250 },
+                          { label: '280px (Rộng)', w: 280 },
+                          { label: '320px (Lớn)', w: 320 },
+                          { label: '360px (Cực đại)', w: 360 },
+                        ].map((preset) => (
+                          <button
+                            key={preset.w}
+                            type="button"
+                            onClick={() => {
+                              setBannersConfig((prev) => ({
+                                ...prev,
+                                leftBanner: { ...prev.leftBanner, width: preset.w },
+                              }));
+                              setBannersLoaded(true);
+                            }}
+                            className={`px-2 py-1 rounded-lg text-[10px] font-bold transition cursor-pointer border ${
+                              (bannersConfig.leftBanner.width || 260) === preset.w
+                                ? 'bg-rose-600 text-white border-rose-500'
+                                : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white'
+                            }`}
+                          >
+                            {preset.label}
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const curW = bannersConfig.leftBanner.width || 260;
+                            setBannersConfig((prev) => ({
+                              ...prev,
+                              rightBanner: { ...prev.rightBanner, width: curW },
+                            }));
+                            setBannersLoaded(true);
+                            showToast(`✓ Đã áp dụng bề ngang ${curW}px cho cả 2 bên banner! Bấm Lưu.`);
+                          }}
+                          className="ml-auto px-2 py-1 rounded-lg text-[10px] font-semibold text-rose-300 hover:text-rose-200 bg-rose-950/50 border border-rose-800/50 cursor-pointer"
+                          title="Đồng bộ bề ngang này sang banner bên phải"
+                        >
+                          Áp dụng cho bên phải ➔
+                        </button>
+                      </div>
+                      <p className="text-[10px] text-slate-400 italic">
+                        * Chiều cao sẽ tự động co giãn theo tỷ lệ ảnh gốc, không bị méo hình.
+                      </p>
+                    </div>
+
+                    {/* Destination URL */}
+                    <div className="space-y-1.5 pt-1">
+                      <label className="block text-xs font-bold text-slate-300">
+                        Link chuyển đến khi khách bấm vào ảnh (Tùy chọn):
+                      </label>
+                      <input
+                        type="text"
+                        value={bannersConfig.leftBanner.linkUrl || ''}
+                        onChange={(e) =>
+                          setBannersConfig((prev) => ({
+                            ...prev,
+                            leftBanner: { ...prev.leftBanner, linkUrl: e.target.value },
+                          }))
+                        }
+                        placeholder="https://photobook.vn hoặc link Facebook/Zalo..."
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-[#0a0e19] border border-slate-700 text-white text-xs placeholder-slate-500 outline-none focus:border-rose-500 transition"
+                      />
+                      <p className="text-[11px] text-slate-500">
+                        * Nhập đường link bất kỳ, hoặc nhập <b>topup</b> để mở popup nạp lượt VIP.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. BANNER BÊN PHẢI (RIGHT SIDE) */}
+                <div className="bg-[#121728] border border-slate-800/90 rounded-3xl p-6 shadow-xl flex flex-col justify-between space-y-5">
+                  <div className="space-y-4">
+                    {/* Header + Toggle */}
+                    <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                      <div>
+                        <div className="text-[11px] font-extrabold uppercase tracking-wider text-indigo-400">
+                          CỘT PHẢI (RIGHT SIDEBAR)
+                        </div>
+                        <h3 className="text-base font-black text-white mt-0.5">
+                          Banner Quảng Cáo Bên Phải
+                        </h3>
+                      </div>
+
+                      <label className="flex items-center gap-2 cursor-pointer select-none">
+                        <span className="text-xs font-bold text-slate-300">
+                          {bannersConfig.rightBanner.enabled ? 'Đang Bật' : 'Đang Tắt'}
+                        </span>
+                        <input
+                          type="checkbox"
+                          checked={bannersConfig.rightBanner.enabled}
+                          onChange={(e) =>
+                            setBannersConfig((prev) => ({
+                              ...prev,
+                              rightBanner: { ...prev.rightBanner, enabled: e.target.checked },
+                            }))
+                          }
+                          className="w-5 h-5 accent-indigo-500 rounded cursor-pointer"
+                        />
+                      </label>
+                    </div>
+
+                    {/* Preview box */}
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="text-xs font-bold text-slate-300">
+                          Hình ảnh hiển thị (Xem trước):
+                        </label>
+                        {bannersConfig.rightBanner.imageUrl?.startsWith('data:') && (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
+                            ✓ Ảnh đã nén & tối ưu sẵn sàng
+                          </span>
+                        )}
+                      </div>
+                      <div className="relative group rounded-2xl overflow-hidden border-2 border-dashed border-slate-700 bg-[#0a0e1a] p-3 flex items-center justify-center min-h-[300px]">
+                        {bannerOptimizing.right ? (
+                          <div className="flex flex-col items-center gap-2 py-12 text-indigo-400">
+                            <Loader2 className="w-8 h-8 animate-spin" />
+                            <span className="text-xs font-bold">Đang nén & tối ưu ảnh...</span>
+                          </div>
+                        ) : bannersConfig.rightBanner.imageUrl ? (
+                          <div className="relative max-w-[200px] w-full mx-auto">
+                            <img
+                              src={bannersConfig.rightBanner.imageUrl}
+                              alt="Banner phải"
+                              className="w-full h-auto max-h-[380px] object-contain rounded-xl shadow-lg border border-slate-700"
+                              onError={(e) => {
+                                (e.target as HTMLElement).style.display = 'none';
+                              }}
+                            />
+                            <div className="text-center text-[10px] text-slate-500 mt-2">
+                              Kích thước khuyến nghị: 240 x 500px (Dạng ảnh đứng)
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="text-center text-slate-500 text-xs">
+                            Chưa có ảnh banner. Hãy tải ảnh lên.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Upload button & restore default */}
+                    <div className="flex items-center gap-2 pt-1 flex-wrap">
+                      <label className="flex-1 min-w-[170px] px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center justify-center gap-2 cursor-pointer shadow transition active:scale-98">
+                        <Upload className="w-4 h-4" />
+                        <span>Tải ảnh từ máy tính</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => handleBannerUpload('right', e)}
+                        />
+                      </label>
+
+                      <button
+                        type="button"
+                        onClick={() => handleResetSideBanner('right')}
+                        className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-semibold text-xs transition cursor-pointer border border-slate-700"
+                        title="Khôi phục ảnh mẫu ban đầu"
+                      >
+                        Khôi phục ảnh mẫu
+                      </button>
+                    </div>
+
+                    {/* Direct image URL input (Optional alternative) */}
+                    <div className="space-y-1.5 pt-1">
+                      <label className="block text-xs font-bold text-slate-300">
+                        Hoặc nhập link URL ảnh trực tiếp (Tùy chọn):
+                      </label>
+                      <input
+                        type="text"
+                        value={bannersConfig.rightBanner.imageUrl?.startsWith('data:') ? '' : (bannersConfig.rightBanner.imageUrl || '')}
+                        onChange={(e) => {
+                          const val = e.target.value.trim();
+                          if (val) {
+                            setBannersConfig((prev) => ({
+                              ...prev,
+                              rightBanner: { ...prev.rightBanner, imageUrl: val },
+                            }));
+                            setBannersLoaded(true);
+                          }
+                        }}
+                        placeholder="https://... (Nếu có sẵn link ảnh online)"
+                        className="w-full px-3.5 py-2 rounded-xl bg-[#0a0e19] border border-slate-700 text-white text-xs placeholder-slate-500 outline-none focus:border-indigo-500 transition"
+                      />
+                    </div>
+
+                    {/* Width setting (Bề ngang px - chiều cao tự co giãn theo tỷ lệ) */}
+                    <div className="space-y-2 pt-2 bg-[#0a0e19] p-3.5 rounded-2xl border border-slate-800">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                          <SlidersHorizontal className="w-3.5 h-3.5 text-indigo-400" />
+                          <span>Bề ngang banner (Chiều rộng):</span>
+                        </label>
+                        <div className="flex items-center gap-1 bg-[#121728] px-2.5 py-1 rounded-xl border border-slate-700">
+                          <input
+                            type="number"
+                            min={160}
+                            max={450}
+                            value={bannersConfig.rightBanner.width || 260}
+                            onChange={(e) => {
+                              const val = Math.max(160, Math.min(500, Number(e.target.value) || 260));
+                              setBannersConfig((prev) => ({
+                                ...prev,
+                                rightBanner: { ...prev.rightBanner, width: val },
+                              }));
+                              setBannersLoaded(true);
+                            }}
+                            className="w-12 text-center text-xs font-black text-indigo-300 bg-transparent outline-none"
+                          />
+                          <span className="text-xs text-slate-400 font-bold">px</span>
+                        </div>
+                      </div>
+
+                      {/* Slider */}
+                      <input
+                        type="range"
+                        min={160}
+                        max={420}
+                        step={10}
+                        value={bannersConfig.rightBanner.width || 260}
+                        onChange={(e) => {
+                          const val = Number(e.target.value);
+                          setBannersConfig((prev) => ({
+                            ...prev,
+                            rightBanner: { ...prev.rightBanner, width: val },
+                          }));
+                          setBannersLoaded(true);
+                        }}
+                        className="w-full accent-indigo-500 cursor-pointer"
+                      />
+
+                      {/* Quick preset buttons */}
+                      <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                        {[
+                          { label: '200px (Nhỏ)', w: 200 },
+                          { label: '250px (Vừa)', w: 250 },
+                          { label: '280px (Rộng)', w: 280 },
+                          { label: '320px (Lớn)', w: 320 },
+                          { label: '360px (Cực đại)', w: 360 },
+                        ].map((preset) => (
+                          <button
+                            key={preset.w}
+                            type="button"
+                            onClick={() => {
+                              setBannersConfig((prev) => ({
+                                ...prev,
+                                rightBanner: { ...prev.rightBanner, width: preset.w },
+                              }));
+                              setBannersLoaded(true);
+                            }}
+                            className={`px-2 py-1 rounded-lg text-[10px] font-bold transition cursor-pointer border ${
+                              (bannersConfig.rightBanner.width || 260) === preset.w
+                                ? 'bg-indigo-600 text-white border-indigo-500'
+                                : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white'
+                            }`}
+                          >
+                            {preset.label}
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const curW = bannersConfig.rightBanner.width || 260;
+                            setBannersConfig((prev) => ({
+                              ...prev,
+                              leftBanner: { ...prev.leftBanner, width: curW },
+                            }));
+                            setBannersLoaded(true);
+                            showToast(`✓ Đã áp dụng bề ngang ${curW}px cho cả 2 bên banner! Bấm Lưu.`);
+                          }}
+                          className="ml-auto px-2 py-1 rounded-lg text-[10px] font-semibold text-indigo-300 hover:text-indigo-200 bg-indigo-950/50 border border-indigo-800/50 cursor-pointer"
+                          title="Đồng bộ bề ngang này sang banner bên trái"
+                        >
+                          Áp dụng cho bên trái ➔
+                        </button>
+                      </div>
+                      <p className="text-[10px] text-slate-400 italic">
+                        * Chiều cao sẽ tự động co giãn theo tỷ lệ ảnh gốc, không bị méo hình.
+                      </p>
+                    </div>
+
+                    {/* Destination URL */}
+                    <div className="space-y-1.5 pt-1">
+                      <label className="block text-xs font-bold text-slate-300">
+                        Link chuyển đến khi khách bấm vào ảnh (Tùy chọn):
+                      </label>
+                      <input
+                        type="text"
+                        value={bannersConfig.rightBanner.linkUrl || ''}
+                        onChange={(e) =>
+                          setBannersConfig((prev) => ({
+                            ...prev,
+                            rightBanner: { ...prev.rightBanner, linkUrl: e.target.value },
+                          }))
+                        }
+                        placeholder="topup hoặc https://..."
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-[#0a0e19] border border-slate-700 text-white text-xs placeholder-slate-500 outline-none focus:border-indigo-500 transition"
+                      />
+                      <p className="text-[11px] text-slate-500">
+                        * Nhập <b>topup</b> để khi khách bấm vào sẽ mở bảng Nạp Lượt VIP VietQR.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Bottom Big Save Button Bar */}
+              <div className="bg-[#121728] border border-slate-800/90 rounded-2xl p-4 flex items-center justify-between gap-4">
+                <span className="text-xs text-slate-400">
+                  Sau khi thay đổi hình ảnh hoặc link, hãy bấm <b>Lưu 2 Banner Ngay</b> để áp dụng cho toàn bộ người dùng.
+                </span>
+
+                <button
+                  type="button"
+                  disabled={bannersSaving}
+                  onClick={handleSaveBannersAction}
+                  className="px-8 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-sm font-black flex items-center justify-center gap-2 transition shadow-lg shadow-emerald-600/30 cursor-pointer active:scale-98 shrink-0"
+                >
+                  {bannersSaving ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Save className="w-4 h-4" />
+                  )}
+                  <span>{bannersSaving ? 'Đang lưu cài đặt...' : 'LƯU 2 BANNER NGAY'}</span>
+                </button>
               </div>
             </div>
           )}

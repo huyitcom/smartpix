@@ -38,3 +38,17 @@ export interface LinkCreationRecord {
   lastAccessedAt?: string;
 }
 
+export interface SingleBannerConfig {
+  imageUrl: string;
+  linkUrl: string;
+  enabled: boolean;
+  altText?: string;
+  width?: number; // Bề ngang (px), chiều cao tự động theo tỷ lệ
+  updatedAt?: string;
+}
+
+export interface BannersConfig {
+  leftBanner: SingleBannerConfig;
+  rightBanner: SingleBannerConfig;
+}
+

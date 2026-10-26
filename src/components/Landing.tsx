@@ -4,6 +4,7 @@ import { logOut, UserProfile, signInWithGoogle, recordLinkCreation } from '../fi
 import AuthModal from './AuthModal';
 import UserProfileModal from './UserProfileModal';
 import FeatureAnnouncementBanner from './FeatureAnnouncementBanner';
+import AdBanners from './AdBanners';
 
 export default function Landing({
   onStart,
@@ -235,6 +236,9 @@ export default function Landing({
 
       {/* Prominent New Feature Banner: Region Marking & Annotations (Placed below main card) */}
       <FeatureAnnouncementBanner onOpenFilter={handleVIPFilterClick} />
+
+      {/* 2 Advertisement Banners (Designed with dual smart placement: Bottom cards + Desktop skyscrapers) */}
+      <AdBanners onOpenTopupModal={onOpenTopupModal} />
 
       <div className="mt-6 text-slate-400 text-sm font-medium tracking-wide">
         Một sản phẩm của Photobook Vietnam

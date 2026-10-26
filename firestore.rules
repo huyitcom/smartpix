@@ -56,5 +56,11 @@ service cloud.firestore {
       allow read, create, update: if true;
       allow delete: if isAdmin();
     }
+
+    // Site settings & Ad banners
+    match /settings/{settingId} {
+      allow read, create, update: if true;
+      allow delete: if isAdmin();
+    }
   }
 }

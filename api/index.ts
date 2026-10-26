@@ -99,6 +99,7 @@ interface CreditsStoreData {
   orders: Record<string, StoredTopupOrder>;
   renderLogs: StoredRenderLog[];
   links: Record<string, StoredLinkRecord>;
+  banners?: any;
 }
 
 function loadCreditsStore(): CreditsStoreData {
@@ -125,6 +126,7 @@ function loadCreditsStore(): CreditsStoreData {
         orders: parsed.orders || {},
         renderLogs: Array.isArray(parsed.renderLogs) ? parsed.renderLogs : [],
         links: parsed.links || {},
+        banners: parsed.banners || null,
       };
     }
   } catch {}
@@ -134,6 +136,7 @@ function loadCreditsStore(): CreditsStoreData {
     orders: {},
     renderLogs: [],
     links: {},
+    banners: null,
   };
 }
 
@@ -1769,6 +1772,50 @@ app.get("/api/admin/links", async (_req, res) => {
     res.json({ success: true, links: allLinks });
   } catch (err: any) {
     res.status(500).json({ error: err.message || "Lỗi tải danh sách link" });
+  }
+});
+
+// Get active Ad Banners configuration
+app.get("/api/banners", async (_req, res) => {
+  try {
+    const currentDb = getSafeDb();
+    if (currentDb && !creditsStore.banners) {
+      try {
+        const doc = await currentDb.collection("settings").doc("ad_banners").get();
+        if (doc.exists) {
+          creditsStore.banners = doc.data();
+          saveCreditsStore(creditsStore);
+        }
+      } catch {}
+    }
+    res.json({ success: true, banners: creditsStore.banners || null });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Lỗi tải banner quảng cáo" });
+  }
+});
+
+// Admin: Update Ad Banners (uploaded images & destination links)
+app.post("/api/admin/banners", async (req, res) => {
+  try {
+    const payload = req.body || {};
+    creditsStore.banners = payload;
+    saveCreditsStore(creditsStore);
+
+    const currentDb = getSafeDb();
+    if (currentDb) {
+      try {
+        await currentDb.collection("settings").doc("ad_banners").set({
+          ...payload,
+          updatedAt: FieldValue.serverTimestamp(),
+        }, { merge: true });
+      } catch (e) {
+        console.warn("Could not save ad_banners to Firestore Admin:", e);
+      }
+    }
+
+    res.json({ success: true, banners: creditsStore.banners });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Lỗi lưu cấu hình banner" });
   }
 });
 
