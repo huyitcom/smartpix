@@ -24,7 +24,7 @@ import {
   ExternalLink
 } from 'lucide-react';
 import type { DriveFile, StrokeAnnotation, AlbumAnnotations } from '../types';
-import { db, auth, UserProfile, signInWithGoogle } from '../firebase';
+import { db, auth, UserProfile, signInWithGoogle, recordLinkCreation } from '../firebase';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import PhotoAnnotationCanvas from './PhotoAnnotationCanvas';
 import AuthModal from './AuthModal';
@@ -149,7 +149,15 @@ export default function Gallery({
         const resFiles = await fetch(`/api/drive/files?folderId=${folderId}`);
         const dataFiles = await resFiles.json();
         if (!resFiles.ok) throw new Error(dataFiles.error || 'Failed to fetch files');
-        setFiles(dataFiles.files || []);
+        const fetchedList = dataFiles.files || [];
+        setFiles(fetchedList);
+
+        // Record or update link creation history with total photo count
+        recordLinkCreation({
+          folderId,
+          creator: userProfile,
+          photoCount: fetchedList.length,
+        });
 
         // Fetch saved selections & annotations from server (which reads from persistent disk storage)
         const resSelections = await fetch(`/api/albums/${folderId}/selections?t=${Date.now()}`, {

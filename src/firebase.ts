@@ -465,3 +465,140 @@ export const logOut = async () => {
   }
 };
 
+export interface LinkHistoryItem {
+  id: string;
+  folderId: string;
+  driveUrl: string;
+  shareUrl?: string;
+  creatorUid?: string;
+  creatorEmail: string;
+  creatorName: string;
+  creatorPhotoURL?: string | null;
+  creatorRole: 'admin' | 'vip' | 'user' | 'guest';
+  photoCount?: number;
+  createdAt: string;
+  lastAccessedAt?: string;
+}
+
+export const recordLinkCreation = async (data: {
+  folderId: string;
+  driveUrl?: string;
+  creator?: UserProfile | null;
+  photoCount?: number;
+}): Promise<void> => {
+  if (!data.folderId) return;
+  try {
+    const payload = {
+      folderId: data.folderId,
+      driveUrl: data.driveUrl || `https://drive.google.com/drive/folders/${data.folderId}`,
+      shareUrl: typeof window !== 'undefined' ? `${window.location.origin}/?folder=${data.folderId}` : `/?folder=${data.folderId}`,
+      creatorUid: data.creator?.uid || 'guest',
+      creatorEmail: data.creator?.email || 'Chưa đăng nhập',
+      creatorName: data.creator?.displayName || data.creator?.email || 'Khách vãng lai',
+      creatorRole: (data.creator?.role as any) || 'guest',
+      creatorPhotoURL: data.creator?.photoURL || null,
+      photoCount: data.photoCount,
+      createdAt: new Date().toISOString(),
+    };
+
+    // 1. Post to backend server API
+    try {
+      await fetch('/api/links/record', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+    } catch (e) {
+      // ignore
+    }
+
+    // 2. Also write to Firestore collection 'link_history' if db is available
+    if (db) {
+      try {
+        const linkDocRef = doc(db, 'link_history', data.folderId);
+        await setDoc(linkDocRef, {
+          ...payload,
+          updatedAt: serverTimestamp(),
+          createdAt: serverTimestamp(),
+        }, { merge: true });
+      } catch (err) {
+        console.warn('Firestore link_history save warning:', err);
+      }
+    }
+  } catch (err) {
+    console.warn('Error recording link creation:', err);
+  }
+};
+
+export const fetchAllLinkHistory = async (): Promise<LinkHistoryItem[]> => {
+  let list: LinkHistoryItem[] = [];
+
+  // 1. Try Firestore client first
+  if (db) {
+    try {
+      const snap = await getDocs(collection(db, 'link_history'));
+      snap.forEach((docSnap) => {
+        const d = docSnap.data() || {};
+        const createdAtStr =
+          typeof d.createdAt === 'string'
+            ? d.createdAt
+            : d.createdAt?.toDate
+            ? d.createdAt.toDate().toISOString()
+            : new Date().toISOString();
+        const lastAccessedAtStr =
+          typeof d.lastAccessedAt === 'string'
+            ? d.lastAccessedAt
+            : d.lastAccessedAt?.toDate
+            ? d.lastAccessedAt.toDate().toISOString()
+            : undefined;
+
+        list.push({
+          id: docSnap.id,
+          folderId: d.folderId || docSnap.id,
+          driveUrl: d.driveUrl || `https://drive.google.com/drive/folders/${d.folderId || docSnap.id}`,
+          shareUrl: d.shareUrl || `/?folder=${d.folderId || docSnap.id}`,
+          creatorUid: d.creatorUid,
+          creatorEmail: d.creatorEmail || 'Chưa đăng nhập',
+          creatorName: d.creatorName || 'Khách vãng lai',
+          creatorRole: d.creatorRole || 'guest',
+          creatorPhotoURL: d.creatorPhotoURL || null,
+          photoCount: typeof d.photoCount === 'number' ? d.photoCount : undefined,
+          createdAt: createdAtStr,
+          lastAccessedAt: lastAccessedAtStr,
+        });
+      });
+    } catch (err) {
+      console.warn('Could not fetch link history from Firestore:', err);
+    }
+  }
+
+  // 2. Also fetch from backend server store
+  try {
+    const res = await fetch('/api/admin/links');
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data?.links)) {
+        const serverLinks: LinkHistoryItem[] = data.links;
+        const map = new Map<string, LinkHistoryItem>();
+        for (const l of [...list, ...serverLinks]) {
+          const existing = map.get(l.folderId);
+          if (!existing || new Date(l.createdAt).getTime() >= new Date(existing.createdAt).getTime()) {
+            map.set(l.folderId, {
+              ...existing,
+              ...l,
+              photoCount: l.photoCount ?? existing?.photoCount,
+            });
+          }
+        }
+        list = Array.from(map.values());
+      }
+    }
+  } catch (err) {
+    console.warn('Could not fetch link history from server API:', err);
+  }
+
+  // Sort newest first
+  list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  return list;
+};
+

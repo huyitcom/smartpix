@@ -1,6 +1,6 @@
 import { useState, FormEvent } from 'react';
 import { Camera, Link as LinkIcon, FolderSync, LogIn, LogOut, Crown, Sparkles, Shield, QrCode } from 'lucide-react';
-import { logOut, UserProfile, signInWithGoogle } from '../firebase';
+import { logOut, UserProfile, signInWithGoogle, recordLinkCreation } from '../firebase';
 import AuthModal from './AuthModal';
 import UserProfileModal from './UserProfileModal';
 import FeatureAnnouncementBanner from './FeatureAnnouncementBanner';
@@ -76,6 +76,12 @@ export default function Landing({
     const id = extractFolderId(link);
     if (id) {
       setError('');
+      // Ghi lại lịch sử tạo link của thành viên
+      recordLinkCreation({
+        folderId: id,
+        driveUrl: link.trim().startsWith('http') ? link.trim() : `https://drive.google.com/drive/folders/${id}`,
+        creator: userProfile,
+      });
       onStart(id);
     } else {
       setError('Link không hợp lệ. Vui lòng nhập link thư mục Google Drive.');

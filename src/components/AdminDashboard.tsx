@@ -19,8 +19,18 @@ import {
   AlertTriangle,
   Copy,
   UserPlus,
+  Link2,
+  ExternalLink,
+  FolderOpen,
+  Image as ImageIcon,
 } from 'lucide-react';
-import { UserProfile, fetchAllFirestoreUsersResult, updateFirestoreUser } from '../firebase';
+import {
+  UserProfile,
+  fetchAllFirestoreUsersResult,
+  updateFirestoreUser,
+  fetchAllLinkHistory,
+  LinkHistoryItem,
+} from '../firebase';
 
 interface AdminUserRecord {
   uid: string;
@@ -77,10 +87,13 @@ export default function AdminDashboard({
   currentUser,
   onUpdateCurrentUser,
 }: AdminDashboardProps) {
-  const [activeTab, setActiveTab] = useState<'members' | 'orders' | 'logs'>('members');
+  const [activeTab, setActiveTab] = useState<'members' | 'orders' | 'logs' | 'links'>('members');
   const [users, setUsers] = useState<AdminUserRecord[]>([]);
   const [orders, setOrders] = useState<AdminTopupOrder[]>([]);
   const [renderLogs, setRenderLogs] = useState<AdminRenderLog[]>([]);
+  const [links, setLinks] = useState<LinkHistoryItem[]>([]);
+  const [copiedLinkId, setCopiedLinkId] = useState<string | null>(null);
+  const [copiedDriveId, setCopiedDriveId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [busyUid, setBusyUid] = useState<string | null>(null);
@@ -105,14 +118,32 @@ export default function AdminDashboard({
     setTimeout(() => setToastMsg(null), 3000);
   };
 
+  const handleCopyLink = (shareUrl: string, id: string) => {
+    navigator.clipboard.writeText(shareUrl);
+    setCopiedLinkId(id);
+    showToast('✓ Đã sao chép link chọn ảnh!');
+    setTimeout(() => setCopiedLinkId(null), 2000);
+  };
+
+  const handleCopyDrive = (driveUrl: string, id: string) => {
+    navigator.clipboard.writeText(driveUrl);
+    setCopiedDriveId(id);
+    showToast('✓ Đã sao chép link Google Drive gốc!');
+    setTimeout(() => setCopiedDriveId(null), 2000);
+  };
+
   const fetchOverview = useCallback(async () => {
     setLoading(true);
     try {
-      // Pull all users directly from Firebase Firestore 'users' collection (photo-picker-507413)
+      // 1. Pull link creation history from both Firestore and Server store
+      const fetchedLinks = await fetchAllLinkHistory();
+      setLinks(fetchedLinks);
+
+      // 2. Pull all users directly from Firebase Firestore 'users' collection (photo-picker-507413)
       const { users: fbUsers, permissionDenied } = await fetchAllFirestoreUsersResult();
       setFirestorePermissionDenied(Boolean(permissionDenied));
 
-      // Sync with backend store so both Firestore 'users' and server credit/order/log records are unified
+      // 3. Sync with backend store so both Firestore 'users' and server credit/order/log/link records are unified
       const res = await fetch('/api/admin/sync-firestore', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -124,6 +155,21 @@ export default function AdminDashboard({
         setUsers(mergedUsers);
         setOrders(data.orders || []);
         setRenderLogs(data.renderLogs || []);
+
+        if (Array.isArray(data.links) && data.links.length > 0) {
+          const map = new Map<string, LinkHistoryItem>();
+          for (const l of [...fetchedLinks, ...data.links]) {
+            const existing = map.get(l.folderId);
+            if (!existing || new Date(l.createdAt).getTime() >= new Date(existing.createdAt).getTime()) {
+              map.set(l.folderId, {
+                ...existing,
+                ...l,
+                photoCount: l.photoCount ?? existing?.photoCount,
+              });
+            }
+          }
+          setLinks(Array.from(map.values()).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+        }
 
         if (currentUser && onUpdateCurrentUser) {
           const me = mergedUsers.find(
@@ -406,6 +452,17 @@ export default function AdminDashboard({
     );
   });
 
+  const filteredLinks = links.filter((l) => {
+    const q = searchTerm.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      l.creatorEmail?.toLowerCase().includes(q) ||
+      l.creatorName?.toLowerCase().includes(q) ||
+      l.folderId?.toLowerCase().includes(q) ||
+      l.driveUrl?.toLowerCase().includes(q)
+    );
+  });
+
   const vipUsersCount = users.filter((u) => u.role === 'vip').length;
   const standardUsersCount = users.filter((u) => u.role === 'user').length;
   const adminUsersCount = users.filter((u) => u.role === 'admin').length;
@@ -436,12 +493,12 @@ export default function AdminDashboard({
                 Hệ Thống Quản Trị Lượt Render AI & Phân Quyền VIP
               </h1>
               <p className="text-xs text-slate-400">
-                Quản lý thành viên, gán quyền VIP, cấp lượt thủ công & duyệt thanh toán VietQR
+                Quản lý thành viên, theo dõi lịch sử tạo link lọc ảnh, gán quyền VIP & duyệt thanh toán VietQR
               </p>
             </div>
           </div>
 
-          {/* 3 Navigation Tabs + Close Button */}
+          {/* 4 Navigation Tabs + Close Button */}
           <div className="flex items-center gap-2 flex-wrap ml-auto">
             <div className="bg-[#0a0e19] p-1 rounded-2xl border border-slate-800 flex items-center gap-1">
               <button
@@ -455,6 +512,19 @@ export default function AdminDashboard({
               >
                 <Users className="w-3.5 h-3.5" />
                 <span>Thành Viên & Số Dư ({users.length})</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('links')}
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
+                  activeTab === 'links'
+                    ? 'bg-indigo-600 text-white shadow'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <Link2 className="w-3.5 h-3.5" />
+                <span>Lịch Sử Tạo Link ({links.length})</span>
               </button>
 
               <button
@@ -986,6 +1056,238 @@ export default function AdminDashboard({
                     )}
                   </tbody>
                 </table>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 4: LỊCH SỬ TẠO LINK LỌC ẢNH */}
+          {activeTab === 'links' && (
+            <div className="space-y-4">
+              {/* Quick Summary Cards for Link History */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="bg-[#121728] border border-slate-800/90 rounded-2xl p-4 flex items-center justify-between">
+                  <div>
+                    <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                      Tổng số link đã tạo
+                    </div>
+                    <div className="text-2xl font-black text-white mt-1">
+                      {links.length} <span className="text-xs font-semibold text-slate-400">link album</span>
+                    </div>
+                  </div>
+                  <div className="w-10 h-10 rounded-xl bg-indigo-950 border border-indigo-500/40 flex items-center justify-center text-indigo-400">
+                    <Link2 className="w-5 h-5" />
+                  </div>
+                </div>
+
+                <div className="bg-[#121728] border border-slate-800/90 rounded-2xl p-4 flex items-center justify-between">
+                  <div>
+                    <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                      Do VIP & Admin tạo
+                    </div>
+                    <div className="text-2xl font-black text-amber-300 mt-1">
+                      {links.filter((l) => l.creatorRole === 'vip' || l.creatorRole === 'admin').length}{' '}
+                      <span className="text-xs font-semibold text-slate-400">link</span>
+                    </div>
+                  </div>
+                  <div className="w-10 h-10 rounded-xl bg-amber-950/80 border border-amber-500/40 flex items-center justify-center text-amber-400">
+                    <Crown className="w-5 h-5" />
+                  </div>
+                </div>
+
+                <div className="bg-[#121728] border border-slate-800/90 rounded-2xl p-4 flex items-center justify-between">
+                  <div>
+                    <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                      Khách hàng & User thường
+                    </div>
+                    <div className="text-2xl font-black text-emerald-400 mt-1">
+                      {links.filter((l) => l.creatorRole !== 'vip' && l.creatorRole !== 'admin').length}{' '}
+                      <span className="text-xs font-semibold text-slate-400">link</span>
+                    </div>
+                  </div>
+                  <div className="w-10 h-10 rounded-xl bg-emerald-950/80 border border-emerald-500/40 flex items-center justify-center text-emerald-400">
+                    <Users className="w-5 h-5" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Links Table */}
+              <div className="bg-[#121728] border border-slate-800/90 rounded-2xl overflow-hidden shadow-xl">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-slate-800/90 text-[11px] font-extrabold uppercase tracking-wider text-slate-400 bg-[#0d1220]">
+                        <th className="py-3.5 px-5">THỜI GIAN</th>
+                        <th className="py-3.5 px-4">THÀNH VIÊN TẠO LINK</th>
+                        <th className="py-3.5 px-4">THƯ MỤC & SỐ ẢNH</th>
+                        <th className="py-3.5 px-4">LINK CHỌN ẢNH (SMART PIX)</th>
+                        <th className="py-3.5 px-5 text-right">GOOGLE DRIVE GỐC</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/60 text-xs sm:text-sm">
+                      {filteredLinks.length === 0 ? (
+                        <tr>
+                          <td colSpan={5} className="py-12 text-center text-slate-500">
+                            {searchTerm ? 'Không tìm thấy link nào khớp với tìm kiếm.' : 'Chưa có lịch sử tạo link lọc ảnh nào.'}
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredLinks.map((item) => {
+                          const initial =
+                            item.creatorName?.charAt(0)?.toUpperCase() ||
+                            item.creatorEmail?.charAt(0)?.toUpperCase() ||
+                            'U';
+                          const isJustCreated =
+                            Date.now() - new Date(item.createdAt).getTime() < 2 * 60 * 60 * 1000;
+                          const shareUrl =
+                            item.shareUrl ||
+                            (typeof window !== 'undefined'
+                              ? `${window.location.origin}/?folder=${item.folderId}`
+                              : `/?folder=${item.folderId}`);
+                          const driveUrl =
+                            item.driveUrl || `https://drive.google.com/drive/folders/${item.folderId}`;
+
+                          return (
+                            <tr key={item.id || item.folderId} className="hover:bg-[#161d33] transition-colors">
+                              {/* THỜI GIAN */}
+                              <td className="py-4 px-5">
+                                <div className="flex flex-col gap-1">
+                                  <span className="font-semibold text-white text-xs">
+                                    {new Date(item.createdAt).toLocaleString('vi-VN')}
+                                  </span>
+                                  {isJustCreated && (
+                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-extrabold text-[10px] w-fit border border-emerald-500/30">
+                                      Vừa tạo
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+
+                              {/* THÀNH VIÊN TẠO LINK */}
+                              <td className="py-4 px-4">
+                                <div className="flex items-center gap-3">
+                                  {item.creatorPhotoURL ? (
+                                    <img
+                                      src={item.creatorPhotoURL}
+                                      alt={item.creatorName}
+                                      className="w-9 h-9 rounded-full object-cover border border-slate-700 shrink-0"
+                                    />
+                                  ) : (
+                                    <div className="w-9 h-9 rounded-full bg-indigo-900/80 border border-indigo-500/40 text-indigo-200 font-bold text-xs flex items-center justify-center shrink-0">
+                                      {initial}
+                                    </div>
+                                  )}
+                                  <div className="min-w-0">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      <span className="font-bold text-white truncate max-w-[150px]">
+                                        {item.creatorName || 'Khách vãng lai'}
+                                      </span>
+                                      {item.creatorRole === 'admin' ? (
+                                        <span className="px-1.5 py-0.2 rounded-md bg-amber-950 border border-amber-500/40 text-amber-300 font-black text-[10px]">
+                                          ADMIN
+                                        </span>
+                                      ) : item.creatorRole === 'vip' ? (
+                                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded-md bg-purple-950 border border-purple-500/40 text-purple-300 font-black text-[10px]">
+                                          <Crown className="w-2.5 h-2.5 text-amber-400" />
+                                          VIP
+                                        </span>
+                                      ) : item.creatorRole === 'user' ? (
+                                        <span className="px-1.5 py-0.2 rounded-md bg-slate-800 border border-slate-700 text-slate-300 font-semibold text-[10px]">
+                                          USER
+                                        </span>
+                                      ) : (
+                                        <span className="px-1.5 py-0.2 rounded-md bg-zinc-800 text-zinc-400 text-[10px]">
+                                          Khách
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="text-xs text-slate-400 truncate max-w-[200px]">
+                                      {item.creatorEmail || 'Chưa đăng nhập'}
+                                    </div>
+                                  </div>
+                                </div>
+                              </td>
+
+                              {/* THƯ MỤC & SỐ ẢNH */}
+                              <td className="py-4 px-4">
+                                <div className="flex flex-col gap-1">
+                                  <div className="font-mono text-xs text-sky-400 bg-sky-950/40 px-2 py-0.5 rounded border border-sky-800/40 w-fit truncate max-w-[180px]">
+                                    {item.folderId}
+                                  </div>
+                                  <div className="flex items-center gap-1.5 text-slate-300 text-xs font-semibold">
+                                    <ImageIcon className="w-3.5 h-3.5 text-slate-400" />
+                                    <span>
+                                      {typeof item.photoCount === 'number'
+                                        ? `${item.photoCount} ảnh trong album`
+                                        : 'Đã sẵn sàng'}
+                                    </span>
+                                  </div>
+                                </div>
+                              </td>
+
+                              {/* LINK CHỌN ẢNH (SMART PIX) */}
+                              <td className="py-4 px-4">
+                                <div className="flex items-center gap-2">
+                                  <a
+                                    href={shareUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center gap-1.5 transition shadow cursor-pointer shrink-0"
+                                    title="Mở giao diện khách lọc ảnh"
+                                  >
+                                    <ExternalLink className="w-3.5 h-3.5" />
+                                    <span>Mở link lọc</span>
+                                  </a>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCopyLink(shareUrl, item.folderId)}
+                                    className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-xs font-semibold transition cursor-pointer flex items-center gap-1 shrink-0"
+                                    title="Sao chép link chia sẻ cho khách"
+                                  >
+                                    {copiedLinkId === item.folderId ? (
+                                      <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                    ) : (
+                                      <Copy className="w-3.5 h-3.5" />
+                                    )}
+                                    <span>{copiedLinkId === item.folderId ? 'Đã chép' : 'Copy'}</span>
+                                  </button>
+                                </div>
+                              </td>
+
+                              {/* GOOGLE DRIVE GỐC */}
+                              <td className="py-4 px-5 text-right">
+                                <div className="inline-flex items-center justify-end gap-2">
+                                  <a
+                                    href={driveUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="px-3 py-1.5 rounded-xl bg-[#17223b] hover:bg-[#1f2f52] border border-blue-500/40 text-blue-300 hover:text-white font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-xs"
+                                    title="Mở thư mục Google Drive gốc trên drive.google.com"
+                                  >
+                                    <FolderOpen className="w-3.5 h-3.5 text-blue-400" />
+                                    <span>Mở Drive gốc</span>
+                                  </a>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCopyDrive(driveUrl, item.folderId)}
+                                    className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-xs font-semibold transition cursor-pointer flex items-center gap-1"
+                                    title="Sao chép link Google Drive gốc"
+                                  >
+                                    {copiedDriveId === item.folderId ? (
+                                      <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                    ) : (
+                                      <Copy className="w-3.5 h-3.5" />
+                                    )}
+                                    <span>{copiedDriveId === item.folderId ? 'Đã chép' : 'Copy'}</span>
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           )}

@@ -23,3 +23,18 @@ export interface StrokeAnnotation {
 export type AlbumAnnotations = Record<string, StrokeAnnotation[]>;
 export type AlbumRetouchedImages = Record<string, string>;
 
+export interface LinkCreationRecord {
+  id: string;
+  folderId: string;
+  driveUrl: string;
+  shareUrl?: string;
+  creatorUid?: string;
+  creatorEmail: string;
+  creatorName: string;
+  creatorPhotoURL?: string | null;
+  creatorRole: 'admin' | 'vip' | 'user' | 'guest';
+  photoCount?: number;
+  createdAt: string;
+  lastAccessedAt?: string;
+}
+

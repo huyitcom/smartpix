@@ -175,6 +175,56 @@
         "update": "true",
         "delete": "request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'"
       }
+    },
+    {
+      "name": "link_history",
+      "description": "Log of photo filter links created by members.",
+      "documentId": "{historyId}",
+      "fields": [
+        {
+          "name": "folderId",
+          "type": "string",
+          "description": "Google Drive folder ID.",
+          "required": true
+        },
+        {
+          "name": "driveUrl",
+          "type": "string",
+          "description": "Original Google Drive link.",
+          "required": true
+        },
+        {
+          "name": "creatorEmail",
+          "type": "string",
+          "description": "Email of the member who created the link."
+        },
+        {
+          "name": "creatorName",
+          "type": "string",
+          "description": "Display name of the creator."
+        },
+        {
+          "name": "creatorRole",
+          "type": "string",
+          "description": "Role of the creator (admin, vip, user, guest)."
+        },
+        {
+          "name": "photoCount",
+          "type": "number",
+          "description": "Total photos in this folder."
+        },
+        {
+          "name": "createdAt",
+          "type": "timestamp",
+          "description": "When the link was created."
+        }
+      ],
+      "rules": {
+        "read": "true",
+        "create": "true",
+        "update": "true",
+        "delete": "request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'"
+      }
     }
   ]
 }

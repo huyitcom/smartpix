@@ -70,10 +70,26 @@ export interface StoredRenderLog {
   createdAt: string;
 }
 
+export interface StoredLinkRecord {
+  id: string;
+  folderId: string;
+  driveUrl: string;
+  shareUrl?: string;
+  creatorUid?: string;
+  creatorEmail: string;
+  creatorName: string;
+  creatorPhotoURL?: string | null;
+  creatorRole: "admin" | "vip" | "user" | "guest";
+  photoCount?: number;
+  createdAt: string;
+  lastAccessedAt?: string;
+}
+
 interface CreditsStoreData {
   users: Record<string, StoredUserRecord>;
   orders: Record<string, StoredTopupOrder>;
   renderLogs: StoredRenderLog[];
+  links: Record<string, StoredLinkRecord>;
 }
 
 function loadCreditsStore(): CreditsStoreData {
@@ -99,6 +115,7 @@ function loadCreditsStore(): CreditsStoreData {
         users: { ...defaultUsers, ...(parsed.users || {}) },
         orders: parsed.orders || {},
         renderLogs: Array.isArray(parsed.renderLogs) ? parsed.renderLogs : [],
+        links: parsed.links || {},
       };
     }
   } catch (err) {
@@ -109,6 +126,7 @@ function loadCreditsStore(): CreditsStoreData {
     users: defaultUsers,
     orders: {},
     renderLogs: [],
+    links: {},
   };
 }
 
@@ -1560,11 +1578,16 @@ CRITICAL RULES FOR REALISTIC WEDDING RETOUCHING (MANDATORY & ABSOLUTE):
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
 
+    const allLinks = Object.values(creditsStore.links || {}).sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+
     return {
       success: true,
       users: allUsers,
       orders: allOrders,
       renderLogs: creditsStore.renderLogs || [],
+      links: allLinks,
     };
   }
 
@@ -1709,6 +1732,123 @@ CRITICAL RULES FOR REALISTIC WEDDING RETOUCHING (MANDATORY & ABSOLUTE):
       });
     } catch (err: any) {
       res.status(500).json({ error: err.message || "Lỗi từ chối đơn nạp" });
+    }
+  });
+
+  // Record link creation event by a member
+  app.post("/api/links/record", async (req, res) => {
+    try {
+      const {
+        folderId,
+        driveUrl,
+        shareUrl,
+        creatorUid,
+        creatorEmail,
+        creatorName,
+        creatorRole,
+        creatorPhotoURL,
+        photoCount,
+      } = req.body || {};
+
+      if (!folderId) {
+        return res.status(400).json({ error: "folderId is required" });
+      }
+
+      if (!creditsStore.links) {
+        creditsStore.links = {};
+      }
+
+      const existing = creditsStore.links[folderId];
+      const nowIso = new Date().toISOString();
+      const record: StoredLinkRecord = {
+        id: folderId,
+        folderId,
+        driveUrl: driveUrl || `https://drive.google.com/drive/folders/${folderId}`,
+        shareUrl: shareUrl || `/?folder=${folderId}`,
+        creatorUid: creatorUid || existing?.creatorUid || "guest",
+        creatorEmail: creatorEmail || existing?.creatorEmail || "Chưa đăng nhập",
+        creatorName: creatorName || existing?.creatorName || "Khách vãng lai",
+        creatorRole: creatorRole || existing?.creatorRole || "guest",
+        creatorPhotoURL: creatorPhotoURL || existing?.creatorPhotoURL || null,
+        photoCount: typeof photoCount === "number" ? photoCount : existing?.photoCount,
+        createdAt: existing?.createdAt || nowIso,
+        lastAccessedAt: nowIso,
+      };
+
+      creditsStore.links[folderId] = record;
+      saveCreditsStore(creditsStore);
+
+      const currentDb = getSafeDb();
+      if (currentDb) {
+        try {
+          await currentDb.collection("link_history").doc(folderId).set(
+            {
+              ...record,
+              updatedAt: FieldValue.serverTimestamp(),
+            },
+            { merge: true }
+          );
+        } catch (e) {
+          console.warn("Could not save link record to Firestore Admin:", e);
+        }
+      }
+
+      res.json({ success: true, link: record });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || "Lỗi lưu lịch sử tạo link" });
+    }
+  });
+
+  // Admin: Get all member-created links
+  app.get("/api/admin/links", async (_req, res) => {
+    try {
+      const currentDb = getSafeDb();
+      if (currentDb) {
+        try {
+          const linksSnap = await currentDb.collection("link_history").get();
+          if (!creditsStore.links) creditsStore.links = {};
+          linksSnap.forEach((docSnap: any) => {
+            const d = docSnap.data();
+            if (d && d.folderId) {
+              const existing = creditsStore.links[d.folderId];
+              creditsStore.links[d.folderId] = {
+                id: docSnap.id,
+                folderId: d.folderId,
+                driveUrl: d.driveUrl || `https://drive.google.com/drive/folders/${d.folderId}`,
+                shareUrl: d.shareUrl,
+                creatorUid: d.creatorUid,
+                creatorEmail: d.creatorEmail || "Chưa đăng nhập",
+                creatorName: d.creatorName || "Khách vãng lai",
+                creatorRole: d.creatorRole || "guest",
+                creatorPhotoURL: d.creatorPhotoURL || null,
+                photoCount: typeof d.photoCount === "number" ? d.photoCount : existing?.photoCount,
+                createdAt:
+                  typeof d.createdAt === "string"
+                    ? d.createdAt
+                    : d.createdAt?.toDate
+                    ? d.createdAt.toDate().toISOString()
+                    : existing?.createdAt || new Date().toISOString(),
+                lastAccessedAt:
+                  typeof d.lastAccessedAt === "string"
+                    ? d.lastAccessedAt
+                    : d.lastAccessedAt?.toDate
+                    ? d.lastAccessedAt.toDate().toISOString()
+                    : undefined,
+              };
+            }
+          });
+          saveCreditsStore(creditsStore);
+        } catch (e) {
+          console.warn("Could not fetch link_history from Firestore Admin:", e);
+        }
+      }
+
+      const allLinks = Object.values(creditsStore.links || {}).sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+      res.json({ success: true, links: allLinks });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || "Lỗi tải danh sách link" });
     }
   });
 
