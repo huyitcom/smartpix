@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { X, ExternalLink } from 'lucide-react';
+import { X, ExternalLink, Play } from 'lucide-react';
 import { BannersConfig } from '../types';
 import { fetchBannersConfig, DEFAULT_BANNERS_CONFIG } from '../services/bannerService';
+import { getYouTubeEmbedInfo } from '../utils/youtubeHelper';
 
 interface AdBannersProps {
   onOpenTopupModal?: () => void;
@@ -55,15 +56,24 @@ export default function AdBanners({ onOpenTopupModal, className = '' }: AdBanner
   const leftWidth = leftBanner?.width || 260;
   const rightWidth = rightBanner?.width || 260;
 
+  const leftYoutubeInfo = getYouTubeEmbedInfo(leftBanner?.youtubeUrl);
+  const rightYoutubeInfo = getYouTubeEmbedInfo(rightBanner?.youtubeUrl);
+
+  const isLeftYoutube = leftBanner?.mediaType === 'youtube' && Boolean(leftYoutubeInfo);
+  const isRightYoutube = rightBanner?.mediaType === 'youtube' && Boolean(rightYoutubeInfo);
+
+  const isLeftActive = leftBanner?.enabled && (isLeftYoutube || Boolean(leftBanner?.imageUrl));
+  const isRightActive = rightBanner?.enabled && (isRightYoutube || Boolean(rightBanner?.imageUrl));
+
   return (
     <>
       {/* ============================================================== */}
       {/* 1. MẶC ĐỊNH: HAI BANNER 2 BÊN SƯỜN MÀN HÌNH (DESKTOP SKYSCRAPERS)*/}
-      {/* Hiển thị cố định 2 bên sườn, chỉ 1 tấm hình/banner, không text */}
+      {/* Hiển thị cố định 2 bên sườn, hỗ trợ cả Ảnh và Nhúng YouTube Video */}
       {/* ============================================================== */}
       <div className="hidden xl:block pointer-events-none">
         {/* Banner 1: Bên Trái (Left Side Banner) */}
-        {leftBanner?.enabled && leftBanner?.imageUrl && !dismissed.left && (
+        {isLeftActive && !dismissed.left && (
           <aside 
             aria-label="Banner quảng cáo bên trái"
             style={{ width: `${leftWidth}px`, maxWidth: 'calc(50vw - 340px)' }}
@@ -83,25 +93,37 @@ export default function AdBanners({ onOpenTopupModal, className = '' }: AdBanner
                 <X className="w-3.5 h-3.5" />
               </button>
 
-              {/* Tấm hình banner nguyên bản */}
-              <div
-                onClick={() => handleBannerClick(leftBanner.linkUrl)}
-                className="block overflow-hidden rounded-2xl shadow-xl shadow-black/10 hover:shadow-2xl hover:scale-[1.01] transition-all duration-200 cursor-pointer border border-slate-200/60 bg-white"
-                title={leftBanner.linkUrl ? `Bấm để mở: ${leftBanner.linkUrl}` : 'Quảng cáo'}
-              >
-                <img
-                  src={leftBanner.imageUrl}
-                  alt={leftBanner.altText || 'Banner quảng cáo bên trái'}
-                  className="w-full h-auto object-contain block max-h-[85vh]"
-                  loading="lazy"
-                />
-              </div>
+              {/* Tấm hình banner hoặc Video YouTube */}
+              {isLeftYoutube && leftYoutubeInfo ? (
+                <div className={`overflow-hidden rounded-2xl shadow-xl border border-slate-200/60 bg-black w-full ${leftYoutubeInfo.isShorts ? 'aspect-[9/16]' : 'aspect-video'}`}>
+                  <iframe
+                    src={leftYoutubeInfo.embedUrl}
+                    title="YouTube video banner"
+                    className="w-full h-full border-0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                  />
+                </div>
+              ) : (
+                <div
+                  onClick={() => handleBannerClick(leftBanner.linkUrl)}
+                  className="block overflow-hidden rounded-2xl shadow-xl shadow-black/10 hover:shadow-2xl hover:scale-[1.01] transition-all duration-200 cursor-pointer border border-slate-200/60 bg-white"
+                  title={leftBanner.linkUrl ? `Bấm để mở: ${leftBanner.linkUrl}` : 'Quảng cáo'}
+                >
+                  <img
+                    src={leftBanner.imageUrl}
+                    alt={leftBanner.altText || 'Banner quảng cáo bên trái'}
+                    className="w-full h-auto object-contain block max-h-[85vh]"
+                    loading="lazy"
+                  />
+                </div>
+              )}
             </div>
           </aside>
         )}
 
         {/* Banner 2: Bên Phải (Right Side Banner) */}
-        {rightBanner?.enabled && rightBanner?.imageUrl && !dismissed.right && (
+        {isRightActive && !dismissed.right && (
           <aside 
             aria-label="Banner quảng cáo bên phải"
             style={{ width: `${rightWidth}px`, maxWidth: 'calc(50vw - 340px)' }}
@@ -121,19 +143,31 @@ export default function AdBanners({ onOpenTopupModal, className = '' }: AdBanner
                 <X className="w-3.5 h-3.5" />
               </button>
 
-              {/* Tấm hình banner nguyên bản */}
-              <div
-                onClick={() => handleBannerClick(rightBanner.linkUrl)}
-                className="block overflow-hidden rounded-2xl shadow-xl shadow-black/10 hover:shadow-2xl hover:scale-[1.01] transition-all duration-200 cursor-pointer border border-slate-200/60 bg-white"
-                title={rightBanner.linkUrl ? `Bấm để mở: ${rightBanner.linkUrl}` : 'Quảng cáo'}
-              >
-                <img
-                  src={rightBanner.imageUrl}
-                  alt={rightBanner.altText || 'Banner quảng cáo bên phải'}
-                  className="w-full h-auto object-contain block max-h-[85vh]"
-                  loading="lazy"
-                />
-              </div>
+              {/* Tấm hình banner hoặc Video YouTube */}
+              {isRightYoutube && rightYoutubeInfo ? (
+                <div className={`overflow-hidden rounded-2xl shadow-xl border border-slate-200/60 bg-black w-full ${rightYoutubeInfo.isShorts ? 'aspect-[9/16]' : 'aspect-video'}`}>
+                  <iframe
+                    src={rightYoutubeInfo.embedUrl}
+                    title="YouTube video banner"
+                    className="w-full h-full border-0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                  />
+                </div>
+              ) : (
+                <div
+                  onClick={() => handleBannerClick(rightBanner.linkUrl)}
+                  className="block overflow-hidden rounded-2xl shadow-xl shadow-black/10 hover:shadow-2xl hover:scale-[1.01] transition-all duration-200 cursor-pointer border border-slate-200/60 bg-white"
+                  title={rightBanner.linkUrl ? `Bấm để mở: ${rightBanner.linkUrl}` : 'Quảng cáo'}
+                >
+                  <img
+                    src={rightBanner.imageUrl}
+                    alt={rightBanner.altText || 'Banner quảng cáo bên phải'}
+                    className="w-full h-auto object-contain block max-h-[85vh]"
+                    loading="lazy"
+                  />
+                </div>
+              )}
             </div>
           </aside>
         )}
@@ -141,12 +175,11 @@ export default function AdBanners({ onOpenTopupModal, className = '' }: AdBanner
 
       {/* ============================================================== */}
       {/* 2. DÀNH CHO MOBILE & TABLET (MÀN HÌNH NHỎ HƠN XL)                */}
-      {/* Hiển thị 2 tấm hình banner bên dưới trang để khách dùng phone  */}
-      {/* vẫn thấy được banner quảng cáo                                */}
+      {/* Hiển thị bên dưới trang: Hiện TOP thay vì MIDDLE               */}
       {/* ============================================================== */}
-      <div className={`xl:hidden w-full max-w-xl my-4 space-y-3 ${className}`}>
-        {/* Banner Trái trên Mobile */}
-        {leftBanner?.enabled && leftBanner?.imageUrl && !dismissed.left && (
+      <div className={`xl:hidden w-full max-w-xl my-4 space-y-3.5 ${className}`}>
+        {/* Banner Trái trên Mobile / Bottom */}
+        {isLeftActive && !dismissed.left && (
           <div className="relative group">
             <button
               type="button"
@@ -156,22 +189,34 @@ export default function AdBanners({ onOpenTopupModal, className = '' }: AdBanner
             >
               <X className="w-3.5 h-3.5" />
             </button>
-            <div
-              onClick={() => handleBannerClick(leftBanner.linkUrl)}
-              className="overflow-hidden rounded-2xl shadow-md border border-slate-200/80 cursor-pointer active:scale-98 transition-transform bg-white"
-            >
-              <img
-                src={leftBanner.imageUrl}
-                alt={leftBanner.altText || 'Banner quảng cáo'}
-                className="w-full h-auto object-cover max-h-72"
-                loading="lazy"
-              />
-            </div>
+            {isLeftYoutube && leftYoutubeInfo ? (
+              <div className="overflow-hidden rounded-2xl shadow-md border border-slate-200/80 bg-black aspect-video w-full">
+                <iframe
+                  src={leftYoutubeInfo.embedUrl}
+                  title="YouTube video banner"
+                  className="w-full h-full border-0"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                />
+              </div>
+            ) : (
+              <div
+                onClick={() => handleBannerClick(leftBanner.linkUrl)}
+                className="overflow-hidden rounded-2xl shadow-md border border-slate-200/80 cursor-pointer active:scale-98 transition-transform bg-white"
+              >
+                <img
+                  src={leftBanner.imageUrl}
+                  alt={leftBanner.altText || 'Banner quảng cáo'}
+                  className="w-full h-auto object-cover object-top max-h-80"
+                  loading="lazy"
+                />
+              </div>
+            )}
           </div>
         )}
 
-        {/* Banner Phải trên Mobile */}
-        {rightBanner?.enabled && rightBanner?.imageUrl && !dismissed.right && (
+        {/* Banner Phải trên Mobile / Bottom */}
+        {isRightActive && !dismissed.right && (
           <div className="relative group">
             <button
               type="button"
@@ -181,17 +226,29 @@ export default function AdBanners({ onOpenTopupModal, className = '' }: AdBanner
             >
               <X className="w-3.5 h-3.5" />
             </button>
-            <div
-              onClick={() => handleBannerClick(rightBanner.linkUrl)}
-              className="overflow-hidden rounded-2xl shadow-md border border-slate-200/80 cursor-pointer active:scale-98 transition-transform bg-white"
-            >
-              <img
-                src={rightBanner.imageUrl}
-                alt={rightBanner.altText || 'Banner quảng cáo'}
-                className="w-full h-auto object-cover max-h-72"
-                loading="lazy"
-              />
-            </div>
+            {isRightYoutube && rightYoutubeInfo ? (
+              <div className="overflow-hidden rounded-2xl shadow-md border border-slate-200/80 bg-black aspect-video w-full">
+                <iframe
+                  src={rightYoutubeInfo.embedUrl}
+                  title="YouTube video banner"
+                  className="w-full h-full border-0"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                />
+              </div>
+            ) : (
+              <div
+                onClick={() => handleBannerClick(rightBanner.linkUrl)}
+                className="overflow-hidden rounded-2xl shadow-md border border-slate-200/80 cursor-pointer active:scale-98 transition-transform bg-white"
+              >
+                <img
+                  src={rightBanner.imageUrl}
+                  alt={rightBanner.altText || 'Banner quảng cáo'}
+                  className="w-full h-auto object-cover object-top max-h-80"
+                  loading="lazy"
+                />
+              </div>
+            )}
           </div>
         )}
       </div>

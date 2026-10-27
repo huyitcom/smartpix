@@ -135,7 +135,7 @@ export default function VIPAccessModal({
                       try {
                         const profile = await signInWithGoogle();
                         setUserProfile(profile);
-                        if (profile.role === 'vip' || profile.role === 'admin' || (profile.credits ?? 0) > 0) {
+                        if (profile.role === 'vip' || profile.role === 'admin') {
                           onGrantAccess();
                           onClose();
                         } else {

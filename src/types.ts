@@ -40,6 +40,8 @@ export interface LinkCreationRecord {
 
 export interface SingleBannerConfig {
   imageUrl: string;
+  youtubeUrl?: string; // Link video YouTube (watch, shorts, embed, youtu.be)
+  mediaType?: 'image' | 'youtube'; // Tùy chọn hiển thị: Ảnh hoặc Video YouTube
   linkUrl: string;
   enabled: boolean;
   altText?: string;

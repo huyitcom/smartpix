@@ -75,6 +75,7 @@ export interface StoredLinkRecord {
   folderId: string;
   driveUrl: string;
   shareUrl?: string;
+  customTitle?: string;
   creatorUid?: string;
   creatorEmail: string;
   creatorName: string;
@@ -1745,6 +1746,7 @@ CRITICAL RULES FOR REALISTIC WEDDING RETOUCHING (MANDATORY & ABSOLUTE):
         folderId,
         driveUrl,
         shareUrl,
+        customTitle,
         creatorUid,
         creatorEmail,
         creatorName,
@@ -1766,8 +1768,9 @@ CRITICAL RULES FOR REALISTIC WEDDING RETOUCHING (MANDATORY & ABSOLUTE):
       const record: StoredLinkRecord = {
         id: folderId,
         folderId,
-        driveUrl: driveUrl || `https://drive.google.com/drive/folders/${folderId}`,
-        shareUrl: shareUrl || `/?folder=${folderId}`,
+        driveUrl: driveUrl || existing?.driveUrl || `https://drive.google.com/drive/folders/${folderId}`,
+        shareUrl: shareUrl || existing?.shareUrl || `/?folder=${folderId}`,
+        customTitle: typeof customTitle === "string" ? customTitle : existing?.customTitle,
         creatorUid: creatorUid || existing?.creatorUid || "guest",
         creatorEmail: creatorEmail || existing?.creatorEmail || "Chưa đăng nhập",
         creatorName: creatorName || existing?.creatorName || "Khách vãng lai",
@@ -1802,6 +1805,34 @@ CRITICAL RULES FOR REALISTIC WEDDING RETOUCHING (MANDATORY & ABSOLUTE):
     }
   });
 
+  // Delete a link record
+  app.delete("/api/links/:folderId", async (req, res) => {
+    try {
+      const { folderId } = req.params;
+      if (!folderId) {
+        return res.status(400).json({ error: "folderId is required" });
+      }
+
+      if (creditsStore.links && creditsStore.links[folderId]) {
+        delete creditsStore.links[folderId];
+        saveCreditsStore(creditsStore);
+      }
+
+      const currentDb = getSafeDb();
+      if (currentDb) {
+        try {
+          await currentDb.collection("link_history").doc(folderId).delete();
+        } catch (e) {
+          console.warn("Could not delete link record from Firestore Admin:", e);
+        }
+      }
+
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || "Lỗi xóa link" });
+    }
+  });
+
   // Admin: Get all member-created links
   app.get("/api/admin/links", async (_req, res) => {
     try {
@@ -1819,6 +1850,7 @@ CRITICAL RULES FOR REALISTIC WEDDING RETOUCHING (MANDATORY & ABSOLUTE):
                 folderId: d.folderId,
                 driveUrl: d.driveUrl || `https://drive.google.com/drive/folders/${d.folderId}`,
                 shareUrl: d.shareUrl,
+                customTitle: d.customTitle || existing?.customTitle,
                 creatorUid: d.creatorUid,
                 creatorEmail: d.creatorEmail || "Chưa đăng nhập",
                 creatorName: d.creatorName || "Khách vãng lai",

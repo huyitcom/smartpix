@@ -9,7 +9,7 @@ import {
   createUserWithEmailAndPassword,
   updateProfile
 } from 'firebase/auth';
-import { getFirestore, doc, getDoc, setDoc, collection, getDocs, serverTimestamp } from 'firebase/firestore';
+import { getFirestore, doc, getDoc, setDoc, deleteDoc, collection, getDocs, serverTimestamp } from 'firebase/firestore';
 
 // Real Firebase Web App credentials (reads VITE_FIREBASE_* from Vercel/env with fallback to project defaults)
 export const firebaseConfig = {
@@ -470,6 +470,7 @@ export interface LinkHistoryItem {
   folderId: string;
   driveUrl: string;
   shareUrl?: string;
+  customTitle?: string;
   creatorUid?: string;
   creatorEmail: string;
   creatorName: string;
@@ -480,26 +481,78 @@ export interface LinkHistoryItem {
   lastAccessedAt?: string;
 }
 
+const GUEST_CREATE_COUNT_KEY = 'smartpix_guest_create_count_v1';
+const USER_LINKS_LOCAL_PREFIX = 'smartpix_user_links_v1_';
+
+export const getGuestCreatedCount = (): number => {
+  try {
+    const val = Number(localStorage.getItem(GUEST_CREATE_COUNT_KEY) || '0');
+    return Number.isNaN(val) ? 0 : val;
+  } catch {
+    return 0;
+  }
+};
+
+export const incrementGuestCreatedCount = (): number => {
+  try {
+    const next = getGuestCreatedCount() + 1;
+    localStorage.setItem(GUEST_CREATE_COUNT_KEY, String(next));
+    return next;
+  } catch {
+    return 1;
+  }
+};
+
+const getLocalUserLinks = (uid: string): LinkHistoryItem[] => {
+  if (!uid) return [];
+  try {
+    const raw = localStorage.getItem(`${USER_LINKS_LOCAL_PREFIX}${uid}`);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch {}
+  return [];
+};
+
+const saveLocalUserLinks = (uid: string, items: LinkHistoryItem[]) => {
+  if (!uid) return;
+  try {
+    localStorage.setItem(`${USER_LINKS_LOCAL_PREFIX}${uid}`, JSON.stringify(items.slice(0, 100)));
+  } catch {}
+};
+
 export const recordLinkCreation = async (data: {
   folderId: string;
   driveUrl?: string;
+  customTitle?: string;
   creator?: UserProfile | null;
   photoCount?: number;
 }): Promise<void> => {
   if (!data.folderId) return;
   try {
-    const payload = {
+    const uid = data.creator?.uid || 'guest';
+    const existingLocal = getLocalUserLinks(uid).find((i) => i.folderId === data.folderId);
+
+    const payload: LinkHistoryItem = {
+      id: data.folderId,
       folderId: data.folderId,
-      driveUrl: data.driveUrl || `https://drive.google.com/drive/folders/${data.folderId}`,
+      driveUrl: data.driveUrl || existingLocal?.driveUrl || `https://drive.google.com/drive/folders/${data.folderId}`,
       shareUrl: typeof window !== 'undefined' ? `${window.location.origin}/?folder=${data.folderId}` : `/?folder=${data.folderId}`,
-      creatorUid: data.creator?.uid || 'guest',
+      customTitle: data.customTitle ?? existingLocal?.customTitle,
+      creatorUid: uid,
       creatorEmail: data.creator?.email || 'Chưa đăng nhập',
       creatorName: data.creator?.displayName || data.creator?.email || 'Khách vãng lai',
       creatorRole: (data.creator?.role as any) || 'guest',
       creatorPhotoURL: data.creator?.photoURL || null,
-      photoCount: data.photoCount,
-      createdAt: new Date().toISOString(),
+      photoCount: data.photoCount ?? existingLocal?.photoCount,
+      createdAt: existingLocal?.createdAt || new Date().toISOString(),
+      lastAccessedAt: new Date().toISOString(),
     };
+
+    // 0. Save to local storage for instant member feedback
+    const currentLocal = getLocalUserLinks(uid).filter((i) => i.folderId !== data.folderId);
+    saveLocalUserLinks(uid, [payload, ...currentLocal]);
 
     // 1. Post to backend server API
     try {
@@ -516,11 +569,16 @@ export const recordLinkCreation = async (data: {
     if (db) {
       try {
         const linkDocRef = doc(db, 'link_history', data.folderId);
-        await setDoc(linkDocRef, {
+        const firestoreData: Record<string, any> = {
           ...payload,
           updatedAt: serverTimestamp(),
-          createdAt: serverTimestamp(),
-        }, { merge: true });
+        };
+        if (!existingLocal?.createdAt) {
+          firestoreData.createdAt = serverTimestamp();
+        }
+        if (firestoreData.customTitle === undefined) delete firestoreData.customTitle;
+        if (firestoreData.photoCount === undefined) delete firestoreData.photoCount;
+        await setDoc(linkDocRef, firestoreData, { merge: true });
       } catch (err) {
         console.warn('Firestore link_history save warning:', err);
       }
@@ -557,6 +615,7 @@ export const fetchAllLinkHistory = async (): Promise<LinkHistoryItem[]> => {
           folderId: d.folderId || docSnap.id,
           driveUrl: d.driveUrl || `https://drive.google.com/drive/folders/${d.folderId || docSnap.id}`,
           shareUrl: d.shareUrl || `/?folder=${d.folderId || docSnap.id}`,
+          customTitle: d.customTitle || undefined,
           creatorUid: d.creatorUid,
           creatorEmail: d.creatorEmail || 'Chưa đăng nhập',
           creatorName: d.creatorName || 'Khách vãng lai',
@@ -586,6 +645,7 @@ export const fetchAllLinkHistory = async (): Promise<LinkHistoryItem[]> => {
             map.set(l.folderId, {
               ...existing,
               ...l,
+              customTitle: l.customTitle || existing?.customTitle,
               photoCount: l.photoCount ?? existing?.photoCount,
             });
           }
@@ -601,4 +661,134 @@ export const fetchAllLinkHistory = async (): Promise<LinkHistoryItem[]> => {
   list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   return list;
 };
+
+export const fetchUserLinkHistory = async (user: UserProfile | null): Promise<LinkHistoryItem[]> => {
+  if (!user) return [];
+
+  const guestItems = getLocalUserLinks('guest').map((item) => ({
+    ...item,
+    creatorUid: user.uid,
+    creatorEmail: user.email || item.creatorEmail,
+    creatorName: user.displayName || user.email || item.creatorName,
+    creatorRole: (user.role as any) || 'user',
+    creatorPhotoURL: user.photoURL || null,
+  }));
+  if (guestItems.length > 0) {
+    saveLocalUserLinks('guest', []);
+    for (const gItem of guestItems) {
+      recordLinkCreation({
+        folderId: gItem.folderId,
+        driveUrl: gItem.driveUrl,
+        customTitle: gItem.customTitle,
+        creator: user,
+        photoCount: gItem.photoCount,
+      });
+    }
+  }
+
+  const localItems = [...guestItems, ...getLocalUserLinks(user.uid)];
+  const allRemote = await fetchAllLinkHistory();
+
+  const cleanUserEmail = user.email?.trim().toLowerCase();
+  const matchedRemote = allRemote.filter((item) => {
+    if (item.creatorUid && item.creatorUid === user.uid) return true;
+    if (cleanUserEmail && item.creatorEmail && item.creatorEmail.trim().toLowerCase() === cleanUserEmail) return true;
+    return false;
+  });
+
+  const mergedMap = new Map<string, LinkHistoryItem>();
+  for (const item of [...localItems, ...matchedRemote]) {
+    const existing = mergedMap.get(item.folderId);
+    if (!existing) {
+      mergedMap.set(item.folderId, item);
+    } else {
+      mergedMap.set(item.folderId, {
+        ...existing,
+        ...item,
+        customTitle: item.customTitle || existing.customTitle,
+        photoCount: item.photoCount ?? existing.photoCount,
+      });
+    }
+  }
+
+  const finalItems = Array.from(mergedMap.values()).sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
+
+  saveLocalUserLinks(user.uid, finalItems);
+  return finalItems;
+};
+
+export const updateLinkCustomTitle = async (
+  folderId: string,
+  customTitle: string,
+  user?: UserProfile | null
+): Promise<void> => {
+  if (!folderId) return;
+  const trimmed = customTitle.trim();
+
+  if (user?.uid) {
+    const local = getLocalUserLinks(user.uid).map((item) =>
+      item.folderId === folderId ? { ...item, customTitle: trimmed } : item
+    );
+    saveLocalUserLinks(user.uid, local);
+  }
+
+  try {
+    await fetch('/api/links/record', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        folderId,
+        customTitle: trimmed,
+        creatorUid: user?.uid,
+        creatorEmail: user?.email,
+        creatorName: user?.displayName,
+        creatorRole: user?.role,
+      }),
+    });
+  } catch {}
+
+  if (db) {
+    try {
+      await setDoc(
+        doc(db, 'link_history', folderId),
+        {
+          customTitle: trimmed,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+    } catch (err) {
+      console.warn('Could not update customTitle in Firestore:', err);
+    }
+  }
+};
+
+export const deleteUserLinkItem = async (
+  folderId: string,
+  user?: UserProfile | null
+): Promise<void> => {
+  if (!folderId) return;
+
+  if (user?.uid) {
+    const filtered = getLocalUserLinks(user.uid).filter((i) => i.folderId !== folderId);
+    saveLocalUserLinks(user.uid, filtered);
+  }
+
+  try {
+    await fetch(`/api/links/${encodeURIComponent(folderId)}`, {
+      method: 'DELETE',
+    });
+  } catch {}
+
+  if (db) {
+    try {
+      await deleteDoc(doc(db, 'link_history', folderId));
+    } catch (err) {
+      console.warn('Could not delete link from Firestore:', err);
+    }
+  }
+};
+
 

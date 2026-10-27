@@ -53,8 +53,7 @@ service cloud.firestore {
 
     // Link creation history collection (records which member created photo filter links)
     match /link_history/{historyId} {
-      allow read, create, update: if true;
-      allow delete: if isAdmin();
+      allow read, create, update, delete: if true;
     }
 
     // Site settings & Ad banners

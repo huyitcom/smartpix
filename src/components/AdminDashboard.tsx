@@ -27,6 +27,8 @@ import {
   Trash2,
   Save,
   Eye,
+  Video,
+  Play,
 } from 'lucide-react';
 import {
   UserProfile,
@@ -44,6 +46,7 @@ import {
   DEFAULT_RIGHT_BANNER_IMAGE,
 } from '../services/bannerService';
 import { compressBannerImage } from '../utils/imageCompressor';
+import { getYouTubeEmbedInfo } from '../utils/youtubeHelper';
 
 interface AdminUserRecord {
   uid: string;
@@ -1309,6 +1312,11 @@ export default function AdminDashboard({
                               {/* THƯ MỤC & SỐ ẢNH */}
                               <td className="py-4 px-4">
                                 <div className="flex flex-col gap-1">
+                                  {item.customTitle && (
+                                    <div className="font-bold text-xs text-amber-300 truncate max-w-[200px]">
+                                      {item.customTitle}
+                                    </div>
+                                  )}
                                   <div className="font-mono text-xs text-sky-400 bg-sky-950/40 px-2 py-0.5 rounded border border-sky-800/40 w-fit truncate max-w-[180px]">
                                     {item.folderId}
                                   </div>
@@ -1476,20 +1484,92 @@ export default function AdminDashboard({
                       </label>
                     </div>
 
+                    {/* Tùy chọn định dạng: Hình ảnh hoặc Video YouTube */}
+                    <div className="flex items-center gap-1.5 p-1 bg-[#0a0e19] rounded-xl border border-slate-800">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setBannersConfig((prev) => ({
+                            ...prev,
+                            leftBanner: { ...prev.leftBanner, mediaType: 'image' },
+                          }));
+                          setBannersLoaded(true);
+                        }}
+                        className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                          (bannersConfig.leftBanner.mediaType || 'image') === 'image'
+                            ? 'bg-rose-600 text-white shadow'
+                            : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        <ImageIcon className="w-3.5 h-3.5" />
+                        <span>Hình ảnh</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setBannersConfig((prev) => ({
+                            ...prev,
+                            leftBanner: { ...prev.leftBanner, mediaType: 'youtube' },
+                          }));
+                          setBannersLoaded(true);
+                        }}
+                        className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                          bannersConfig.leftBanner.mediaType === 'youtube'
+                            ? 'bg-red-600 text-white shadow'
+                            : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        <Video className="w-3.5 h-3.5" />
+                        <span>Video YouTube</span>
+                      </button>
+                    </div>
+
                     {/* Preview box */}
                     <div>
                       <div className="flex items-center justify-between mb-2">
                         <label className="text-xs font-bold text-slate-300">
-                          Hình ảnh hiển thị (Xem trước):
+                          {bannersConfig.leftBanner.mediaType === 'youtube'
+                            ? 'Video YouTube (Xem trước):'
+                            : 'Hình ảnh hiển thị (Xem trước):'}
                         </label>
-                        {bannersConfig.leftBanner.imageUrl?.startsWith('data:') && (
+                        {bannersConfig.leftBanner.mediaType === 'youtube' ? (
+                          (() => {
+                            const info = getYouTubeEmbedInfo(bannersConfig.leftBanner.youtubeUrl);
+                            return info ? (
+                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/20 text-red-300 font-bold border border-red-500/30">
+                                ✓ YouTube {info.isShorts ? 'Shorts (Dọc)' : 'Video (16:9)'}
+                              </span>
+                            ) : null;
+                          })()
+                        ) : bannersConfig.leftBanner.imageUrl?.startsWith('data:') ? (
                           <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
                             ✓ Ảnh đã nén & tối ưu sẵn sàng
                           </span>
-                        )}
+                        ) : null}
                       </div>
+
                       <div className="relative group rounded-2xl overflow-hidden border-2 border-dashed border-slate-700 bg-[#0a0e1a] p-3 flex items-center justify-center min-h-[300px]">
-                        {bannerOptimizing.left ? (
+                        {bannersConfig.leftBanner.mediaType === 'youtube' ? (
+                          (() => {
+                            const info = getYouTubeEmbedInfo(bannersConfig.leftBanner.youtubeUrl);
+                            return info ? (
+                              <div className={`w-full max-w-[240px] mx-auto rounded-xl overflow-hidden border border-slate-700 bg-black ${info.isShorts ? 'aspect-[9/16]' : 'aspect-video'}`}>
+                                <iframe
+                                  src={info.embedUrl}
+                                  title="YouTube preview"
+                                  className="w-full h-full border-0"
+                                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                  allowFullScreen
+                                />
+                              </div>
+                            ) : (
+                              <div className="text-center text-slate-500 text-xs p-6 space-y-2">
+                                <Video className="w-8 h-8 text-slate-600 mx-auto" />
+                                <div>Chưa có video YouTube. Vui lòng dán link video vào ô bên dưới.</div>
+                              </div>
+                            );
+                          })()
+                        ) : bannerOptimizing.left ? (
                           <div className="flex flex-col items-center gap-2 py-12 text-rose-400">
                             <Loader2 className="w-8 h-8 animate-spin" />
                             <span className="text-xs font-bold">Đang nén & tối ưu ảnh...</span>
@@ -1516,51 +1596,80 @@ export default function AdminDashboard({
                       </div>
                     </div>
 
-                    {/* Upload button & restore default */}
-                    <div className="flex items-center gap-2 pt-1 flex-wrap">
-                      <label className="flex-1 min-w-[170px] px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs flex items-center justify-center gap-2 cursor-pointer shadow transition active:scale-98">
-                        <Upload className="w-4 h-4" />
-                        <span>Tải ảnh từ máy tính</span>
+                    {/* Inputs depending on Media Type */}
+                    {bannersConfig.leftBanner.mediaType === 'youtube' ? (
+                      <div className="space-y-1.5 pt-1">
+                        <label className="block text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                          <Video className="w-3.5 h-3.5 text-red-400" />
+                          <span>Dán link video YouTube (watch, shorts, embed, youtu.be):</span>
+                        </label>
                         <input
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={(e) => handleBannerUpload('left', e)}
-                        />
-                      </label>
-
-                      <button
-                        type="button"
-                        onClick={() => handleResetSideBanner('left')}
-                        className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-semibold text-xs transition cursor-pointer border border-slate-700"
-                        title="Khôi phục ảnh mẫu ban đầu"
-                      >
-                        Khôi phục ảnh mẫu
-                      </button>
-                    </div>
-
-                    {/* Direct image URL input (Optional alternative) */}
-                    <div className="space-y-1.5 pt-1">
-                      <label className="block text-xs font-bold text-slate-300">
-                        Hoặc nhập link URL ảnh trực tiếp (Tùy chọn):
-                      </label>
-                      <input
-                        type="text"
-                        value={bannersConfig.leftBanner.imageUrl?.startsWith('data:') ? '' : (bannersConfig.leftBanner.imageUrl || '')}
-                        onChange={(e) => {
-                          const val = e.target.value.trim();
-                          if (val) {
+                          type="text"
+                          value={bannersConfig.leftBanner.youtubeUrl || ''}
+                          onChange={(e) => {
+                            const val = e.target.value.trim();
                             setBannersConfig((prev) => ({
                               ...prev,
-                              leftBanner: { ...prev.leftBanner, imageUrl: val },
+                              leftBanner: { ...prev.leftBanner, youtubeUrl: val, mediaType: 'youtube' },
                             }));
                             setBannersLoaded(true);
-                          }
-                        }}
-                        placeholder="https://... (Nếu có sẵn link ảnh online)"
-                        className="w-full px-3.5 py-2 rounded-xl bg-[#0a0e19] border border-slate-700 text-white text-xs placeholder-slate-500 outline-none focus:border-rose-500 transition"
-                      />
-                    </div>
+                          }}
+                          placeholder="https://www.youtube.com/watch?v=... hoặc https://youtube.com/shorts/..."
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-[#0a0e19] border border-slate-700 text-white text-xs placeholder-slate-500 outline-none focus:border-red-500 transition"
+                        />
+                        <p className="text-[11px] text-slate-400">
+                          * Hỗ trợ mọi link YouTube (kể cả YouTube Shorts dọc). Video sẽ tự động phát êm dịu (tắt tiếng).
+                        </p>
+                      </div>
+                    ) : (
+                      <>
+                        {/* Upload button & restore default */}
+                        <div className="flex items-center gap-2 pt-1 flex-wrap">
+                          <label className="flex-1 min-w-[170px] px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs flex items-center justify-center gap-2 cursor-pointer shadow transition active:scale-98">
+                            <Upload className="w-4 h-4" />
+                            <span>Tải ảnh từ máy tính</span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) => handleBannerUpload('left', e)}
+                            />
+                          </label>
+
+                          <button
+                            type="button"
+                            onClick={() => handleResetSideBanner('left')}
+                            className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-semibold text-xs transition cursor-pointer border border-slate-700"
+                            title="Khôi phục ảnh mẫu ban đầu"
+                          >
+                            Khôi phục ảnh mẫu
+                          </button>
+                        </div>
+
+                        {/* Direct image URL input (Optional alternative) */}
+                        <div className="space-y-1.5 pt-1">
+                          <label className="block text-xs font-bold text-slate-300">
+                            Hoặc nhập link URL ảnh trực tiếp (Tùy chọn):
+                          </label>
+                          <input
+                            type="text"
+                            value={bannersConfig.leftBanner.imageUrl?.startsWith('data:') ? '' : (bannersConfig.leftBanner.imageUrl || '')}
+                            onChange={(e) => {
+                              const val = e.target.value.trim();
+                              if (val) {
+                                setBannersConfig((prev) => ({
+                                  ...prev,
+                                  leftBanner: { ...prev.leftBanner, imageUrl: val, mediaType: 'image' },
+                                }));
+                                setBannersLoaded(true);
+                              }
+                            }}
+                            placeholder="https://... (Nếu có sẵn link ảnh online)"
+                            className="w-full px-3.5 py-2 rounded-xl bg-[#0a0e19] border border-slate-700 text-white text-xs placeholder-slate-500 outline-none focus:border-rose-500 transition"
+                          />
+                        </div>
+                      </>
+                    )}
 
                     {/* Width setting (Bề ngang px - chiều cao tự co giãn theo tỷ lệ) */}
                     <div className="space-y-2 pt-2 bg-[#0a0e19] p-3.5 rounded-2xl border border-slate-800">
@@ -1713,20 +1822,92 @@ export default function AdminDashboard({
                       </label>
                     </div>
 
+                    {/* Tùy chọn định dạng: Hình ảnh hoặc Video YouTube */}
+                    <div className="flex items-center gap-1.5 p-1 bg-[#0a0e19] rounded-xl border border-slate-800">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setBannersConfig((prev) => ({
+                            ...prev,
+                            rightBanner: { ...prev.rightBanner, mediaType: 'image' },
+                          }));
+                          setBannersLoaded(true);
+                        }}
+                        className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                          (bannersConfig.rightBanner.mediaType || 'image') === 'image'
+                            ? 'bg-indigo-600 text-white shadow'
+                            : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        <ImageIcon className="w-3.5 h-3.5" />
+                        <span>Hình ảnh</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setBannersConfig((prev) => ({
+                            ...prev,
+                            rightBanner: { ...prev.rightBanner, mediaType: 'youtube' },
+                          }));
+                          setBannersLoaded(true);
+                        }}
+                        className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                          bannersConfig.rightBanner.mediaType === 'youtube'
+                            ? 'bg-red-600 text-white shadow'
+                            : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        <Video className="w-3.5 h-3.5" />
+                        <span>Video YouTube</span>
+                      </button>
+                    </div>
+
                     {/* Preview box */}
                     <div>
                       <div className="flex items-center justify-between mb-2">
                         <label className="text-xs font-bold text-slate-300">
-                          Hình ảnh hiển thị (Xem trước):
+                          {bannersConfig.rightBanner.mediaType === 'youtube'
+                            ? 'Video YouTube (Xem trước):'
+                            : 'Hình ảnh hiển thị (Xem trước):'}
                         </label>
-                        {bannersConfig.rightBanner.imageUrl?.startsWith('data:') && (
+                        {bannersConfig.rightBanner.mediaType === 'youtube' ? (
+                          (() => {
+                            const info = getYouTubeEmbedInfo(bannersConfig.rightBanner.youtubeUrl);
+                            return info ? (
+                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/20 text-red-300 font-bold border border-red-500/30">
+                                ✓ YouTube {info.isShorts ? 'Shorts (Dọc)' : 'Video (16:9)'}
+                              </span>
+                            ) : null;
+                          })()
+                        ) : bannersConfig.rightBanner.imageUrl?.startsWith('data:') ? (
                           <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
                             ✓ Ảnh đã nén & tối ưu sẵn sàng
                           </span>
-                        )}
+                        ) : null}
                       </div>
+
                       <div className="relative group rounded-2xl overflow-hidden border-2 border-dashed border-slate-700 bg-[#0a0e1a] p-3 flex items-center justify-center min-h-[300px]">
-                        {bannerOptimizing.right ? (
+                        {bannersConfig.rightBanner.mediaType === 'youtube' ? (
+                          (() => {
+                            const info = getYouTubeEmbedInfo(bannersConfig.rightBanner.youtubeUrl);
+                            return info ? (
+                              <div className={`w-full max-w-[240px] mx-auto rounded-xl overflow-hidden border border-slate-700 bg-black ${info.isShorts ? 'aspect-[9/16]' : 'aspect-video'}`}>
+                                <iframe
+                                  src={info.embedUrl}
+                                  title="YouTube preview"
+                                  className="w-full h-full border-0"
+                                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                  allowFullScreen
+                                />
+                              </div>
+                            ) : (
+                              <div className="text-center text-slate-500 text-xs p-6 space-y-2">
+                                <Video className="w-8 h-8 text-slate-600 mx-auto" />
+                                <div>Chưa có video YouTube. Vui lòng dán link video vào ô bên dưới.</div>
+                              </div>
+                            );
+                          })()
+                        ) : bannerOptimizing.right ? (
                           <div className="flex flex-col items-center gap-2 py-12 text-indigo-400">
                             <Loader2 className="w-8 h-8 animate-spin" />
                             <span className="text-xs font-bold">Đang nén & tối ưu ảnh...</span>
@@ -1753,51 +1934,80 @@ export default function AdminDashboard({
                       </div>
                     </div>
 
-                    {/* Upload button & restore default */}
-                    <div className="flex items-center gap-2 pt-1 flex-wrap">
-                      <label className="flex-1 min-w-[170px] px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center justify-center gap-2 cursor-pointer shadow transition active:scale-98">
-                        <Upload className="w-4 h-4" />
-                        <span>Tải ảnh từ máy tính</span>
+                    {/* Inputs depending on Media Type */}
+                    {bannersConfig.rightBanner.mediaType === 'youtube' ? (
+                      <div className="space-y-1.5 pt-1">
+                        <label className="block text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                          <Video className="w-3.5 h-3.5 text-red-400" />
+                          <span>Dán link video YouTube (watch, shorts, embed, youtu.be):</span>
+                        </label>
                         <input
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={(e) => handleBannerUpload('right', e)}
-                        />
-                      </label>
-
-                      <button
-                        type="button"
-                        onClick={() => handleResetSideBanner('right')}
-                        className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-semibold text-xs transition cursor-pointer border border-slate-700"
-                        title="Khôi phục ảnh mẫu ban đầu"
-                      >
-                        Khôi phục ảnh mẫu
-                      </button>
-                    </div>
-
-                    {/* Direct image URL input (Optional alternative) */}
-                    <div className="space-y-1.5 pt-1">
-                      <label className="block text-xs font-bold text-slate-300">
-                        Hoặc nhập link URL ảnh trực tiếp (Tùy chọn):
-                      </label>
-                      <input
-                        type="text"
-                        value={bannersConfig.rightBanner.imageUrl?.startsWith('data:') ? '' : (bannersConfig.rightBanner.imageUrl || '')}
-                        onChange={(e) => {
-                          const val = e.target.value.trim();
-                          if (val) {
+                          type="text"
+                          value={bannersConfig.rightBanner.youtubeUrl || ''}
+                          onChange={(e) => {
+                            const val = e.target.value.trim();
                             setBannersConfig((prev) => ({
                               ...prev,
-                              rightBanner: { ...prev.rightBanner, imageUrl: val },
+                              rightBanner: { ...prev.rightBanner, youtubeUrl: val, mediaType: 'youtube' },
                             }));
                             setBannersLoaded(true);
-                          }
-                        }}
-                        placeholder="https://... (Nếu có sẵn link ảnh online)"
-                        className="w-full px-3.5 py-2 rounded-xl bg-[#0a0e19] border border-slate-700 text-white text-xs placeholder-slate-500 outline-none focus:border-indigo-500 transition"
-                      />
-                    </div>
+                          }}
+                          placeholder="https://www.youtube.com/watch?v=... hoặc https://youtube.com/shorts/..."
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-[#0a0e19] border border-slate-700 text-white text-xs placeholder-slate-500 outline-none focus:border-red-500 transition"
+                        />
+                        <p className="text-[11px] text-slate-400">
+                          * Hỗ trợ mọi link YouTube (kể cả YouTube Shorts dọc). Video sẽ tự động phát êm dịu (tắt tiếng).
+                        </p>
+                      </div>
+                    ) : (
+                      <>
+                        {/* Upload button & restore default */}
+                        <div className="flex items-center gap-2 pt-1 flex-wrap">
+                          <label className="flex-1 min-w-[170px] px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center justify-center gap-2 cursor-pointer shadow transition active:scale-98">
+                            <Upload className="w-4 h-4" />
+                            <span>Tải ảnh từ máy tính</span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) => handleBannerUpload('right', e)}
+                            />
+                          </label>
+
+                          <button
+                            type="button"
+                            onClick={() => handleResetSideBanner('right')}
+                            className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-semibold text-xs transition cursor-pointer border border-slate-700"
+                            title="Khôi phục ảnh mẫu ban đầu"
+                          >
+                            Khôi phục ảnh mẫu
+                          </button>
+                        </div>
+
+                        {/* Direct image URL input (Optional alternative) */}
+                        <div className="space-y-1.5 pt-1">
+                          <label className="block text-xs font-bold text-slate-300">
+                            Hoặc nhập link URL ảnh trực tiếp (Tùy chọn):
+                          </label>
+                          <input
+                            type="text"
+                            value={bannersConfig.rightBanner.imageUrl?.startsWith('data:') ? '' : (bannersConfig.rightBanner.imageUrl || '')}
+                            onChange={(e) => {
+                              const val = e.target.value.trim();
+                              if (val) {
+                                setBannersConfig((prev) => ({
+                                  ...prev,
+                                  rightBanner: { ...prev.rightBanner, imageUrl: val, mediaType: 'image' },
+                                }));
+                                setBannersLoaded(true);
+                              }
+                            }}
+                            placeholder="https://... (Nếu có sẵn link ảnh online)"
+                            className="w-full px-3.5 py-2 rounded-xl bg-[#0a0e19] border border-slate-700 text-white text-xs placeholder-slate-500 outline-none focus:border-indigo-500 transition"
+                          />
+                        </div>
+                      </>
+                    )}
 
                     {/* Width setting (Bề ngang px - chiều cao tự co giãn theo tỷ lệ) */}
                     <div className="space-y-2 pt-2 bg-[#0a0e19] p-3.5 rounded-2xl border border-slate-800">

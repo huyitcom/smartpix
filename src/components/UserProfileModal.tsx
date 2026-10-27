@@ -8,7 +8,8 @@ import {
   CheckCircle2, 
   AlertCircle,
   Sparkles,
-  Loader2
+  Loader2,
+  History
 } from 'lucide-react';
 import { UserProfile, signInWithGoogle, logOut } from '../firebase';
 
@@ -20,6 +21,8 @@ interface UserProfileModalProps {
   onOpenAuthModal: () => void;
   onOpenTopupModal?: () => void;
   onOpenAdmin?: () => void;
+  onOpenMyLinks?: () => void;
+  myLinksCount?: number;
 }
 
 export default function UserProfileModal({
@@ -29,6 +32,8 @@ export default function UserProfileModal({
   setUserProfile,
   onOpenTopupModal,
   onOpenAdmin,
+  onOpenMyLinks,
+  myLinksCount = 0,
 }: UserProfileModalProps) {
   const [switchingAccount, setSwitchingAccount] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -187,6 +192,26 @@ export default function UserProfileModal({
             )}
           </div>
         </div>
+
+        {/* Member Created Links Shortcut */}
+        {onOpenMyLinks && (
+          <button
+            type="button"
+            onClick={() => {
+              onClose();
+              onOpenMyLinks();
+            }}
+            className="w-full mb-4 py-3.5 px-4 rounded-2xl bg-sky-50 hover:bg-sky-100 border border-sky-200 text-sky-700 font-bold text-xs sm:text-sm flex items-center justify-between transition cursor-pointer shadow-2xs"
+          >
+            <div className="flex items-center gap-2">
+              <History className="w-4 h-4 text-sky-600" />
+              <span>Quản lý các Link bạn đã tạo</span>
+            </div>
+            <span className="px-2.5 py-0.5 rounded-full bg-sky-500 text-white text-xs font-black">
+              {myLinksCount} link
+            </span>
+          </button>
+        )}
 
         {/* Action Buttons */}
         <div className="flex items-center gap-3 w-full">

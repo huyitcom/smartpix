@@ -220,7 +220,7 @@ export default function App() {
       setVipModalStep('login_required');
       return;
     }
-    if (userProfile.role === 'vip' || userProfile.role === 'admin' || (userProfile.credits ?? 0) > 0) {
+    if (userProfile.role === 'vip' || userProfile.role === 'admin') {
       handleOpenFilter(fileList);
       return;
     }
