@@ -52,5 +52,7 @@ export interface SingleBannerConfig {
 export interface BannersConfig {
   leftBanner: SingleBannerConfig;
   rightBanner: SingleBannerConfig;
+  vipBanner1?: SingleBannerConfig;
+  vipBanner2?: SingleBannerConfig;
 }
 

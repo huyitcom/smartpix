@@ -170,6 +170,119 @@ export const DEFAULT_RIGHT_BANNER_IMAGE = `data:image/svg+xml;charset=utf-8,${en
 </svg>
 `)}`;
 
+// Default high-resolution VIP Modal Banner 1 graphic (SVG Data URL)
+export const DEFAULT_VIP_BANNER_1_IMAGE = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(`
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 220" width="400" height="220">
+  <defs>
+    <linearGradient id="bgVip1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#180b20" />
+      <stop offset="60%" stop-color="#2d1338" />
+      <stop offset="100%" stop-color="#120619" />
+    </linearGradient>
+    <linearGradient id="vipGold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fde047" />
+      <stop offset="50%" stop-color="#eab308" />
+      <stop offset="100%" stop-color="#ca8a04" />
+    </linearGradient>
+    <linearGradient id="vipRose" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#f43f5e" />
+      <stop offset="100%" stop-color="#fb7185" />
+    </linearGradient>
+  </defs>
+
+  <rect width="400" height="220" rx="18" fill="url(#bgVip1)" />
+  <rect x="1.5" y="1.5" width="397" height="217" rx="16.5" fill="none" stroke="#f43f5e" stroke-width="1.5" stroke-opacity="0.35" />
+
+  <!-- Ambient light -->
+  <circle cx="360" cy="40" r="80" fill="#f43f5e" fill-opacity="0.15" />
+  <circle cx="40" cy="180" r="70" fill="#eab308" fill-opacity="0.1" />
+
+  <!-- Badge 1: Photobook VN -->
+  <rect x="20" y="18" width="125" height="22" rx="11" fill="#f43f5e" fill-opacity="0.2" stroke="#f43f5e" stroke-width="1" stroke-opacity="0.5" />
+  <text x="82" y="33" fill="#fca5a5" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="9" font-weight="900" text-anchor="middle" letter-spacing="0.8">PHOTOBOOK VIETNAM</text>
+
+  <!-- Badge 2: Ưu đãi -->
+  <rect x="155" y="18" width="105" height="22" rx="11" fill="url(#vipGold)" />
+  <text x="207" y="33" fill="#000000" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="9.5" font-weight="900" text-anchor="middle">GIẢM 20% ĐƠN ĐẦU</text>
+
+  <!-- Titles -->
+  <text x="20" y="72" fill="#ffffff" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="20" font-weight="900">ĐẶT IN ALBUM CƯỚI</text>
+  <text x="20" y="96" fill="url(#vipGold)" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="14.5" font-weight="800">TẶNG TÀI KHOẢN VIP TRỌN ĐỜI 👑</text>
+
+  <!-- Subtitle -->
+  <text x="20" y="122" fill="#d1d5db" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="11" font-weight="500">Chỉ từ 1 cuốn • Bìa da cao cấp • Mở phẳng 180°</text>
+
+  <!-- Features tag list -->
+  <g transform="translate(20, 140)">
+    <rect width="360" height="26" rx="6" fill="#ffffff" fill-opacity="0.06" />
+    <text x="12" y="17" fill="#fbbf24" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="10.5" font-weight="700">✓ Lọc ảnh máy tính siêu tốc</text>
+    <text x="180" y="17" fill="#38bdf8" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="10.5" font-weight="700">✓ Xuất mã file in album 1 chạm</text>
+  </g>
+
+  <!-- CTA Button -->
+  <g transform="translate(20, 174)">
+    <rect width="180" height="32" rx="16" fill="url(#vipRose)" />
+    <text x="90" y="20" fill="#ffffff" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="11" font-weight="800" text-anchor="middle">XEM MẪU &amp; BÁO GIÁ ➜</text>
+  </g>
+</svg>
+`)}`;
+
+// Default high-resolution VIP Modal Banner 2 graphic (SVG Data URL)
+export const DEFAULT_VIP_BANNER_2_IMAGE = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(`
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 220" width="400" height="220">
+  <defs>
+    <linearGradient id="bgVip2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0a162b" />
+      <stop offset="60%" stop-color="#122547" />
+      <stop offset="100%" stop-color="#071020" />
+    </linearGradient>
+    <linearGradient id="cyanSky" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="50%" stop-color="#0ea5e9" />
+      <stop offset="100%" stop-color="#0284c7" />
+    </linearGradient>
+    <linearGradient id="amberHotline" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#fbbf24" />
+      <stop offset="100%" stop-color="#f59e0b" />
+    </linearGradient>
+  </defs>
+
+  <rect width="400" height="220" rx="18" fill="url(#bgVip2)" />
+  <rect x="1.5" y="1.5" width="397" height="217" rx="16.5" fill="none" stroke="#38bdf8" stroke-width="1.5" stroke-opacity="0.35" />
+
+  <!-- Ambient light -->
+  <circle cx="360" cy="180" r="90" fill="#0ea5e9" fill-opacity="0.12" />
+  <circle cx="40" cy="30" r="80" fill="#6366f1" fill-opacity="0.1" />
+
+  <!-- Badges -->
+  <rect x="20" y="18" width="125" height="22" rx="11" fill="#0ea5e9" fill-opacity="0.2" stroke="#0ea5e9" stroke-width="1" stroke-opacity="0.5" />
+  <text x="82" y="33" fill="#7dd3fc" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="9" font-weight="900" text-anchor="middle" letter-spacing="0.8">CHUẨN LAB ULTRA-HD</text>
+
+  <rect x="155" y="18" width="135" height="22" rx="11" fill="url(#amberHotline)" />
+  <text x="222" y="33" fill="#000000" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="9" font-weight="900" text-anchor="middle">HOTLINE: 0938.023.079</text>
+
+  <!-- Titles -->
+  <text x="20" y="72" fill="#ffffff" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="20" font-weight="900">ẢNH CỔNG &amp; KHUNG HÌNH</text>
+  <text x="20" y="96" fill="url(#cyanSky)" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="14.5" font-weight="800">PHA LÊ • GỖ HD • CANVAS CAO CẤP</text>
+
+  <!-- Subtitle -->
+  <text x="20" y="122" fill="#d1d5db" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="11" font-weight="500">Màu sắc sắc nét chuẩn Studio • Phủ UV bảo vệ chống ẩm mốc</text>
+
+  <!-- Features tag list -->
+  <g transform="translate(20, 140)">
+    <rect width="360" height="26" rx="6" fill="#ffffff" fill-opacity="0.06" />
+    <text x="12" y="17" fill="#34d399" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="10.5" font-weight="700">✓ Duyệt mượt 2000+ file Drive</text>
+    <text x="190" y="17" fill="#f472b6" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="10.5" font-weight="700">✓ Tích hợp AI Retouch da mịn</text>
+  </g>
+
+  <!-- CTA Button -->
+  <g transform="translate(20, 174)">
+    <rect width="180" height="32" rx="16" fill="url(#cyanSky)" />
+    <text x="90" y="20" fill="#ffffff" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="11" font-weight="800" text-anchor="middle">LIÊN HỆ ĐẶT IN NGAY ➜</text>
+  </g>
+</svg>
+`)}`;
+
 export const DEFAULT_BANNERS_CONFIG: BannersConfig = {
   leftBanner: {
     imageUrl: DEFAULT_LEFT_BANNER_IMAGE,
@@ -185,6 +298,18 @@ export const DEFAULT_BANNERS_CONFIG: BannersConfig = {
     width: 260,
     altText: 'Smart Pix VIP - AI Retouch Ảnh Cưới Studio',
   },
+  vipBanner1: {
+    imageUrl: DEFAULT_VIP_BANNER_1_IMAGE,
+    linkUrl: 'https://photobook.vn',
+    enabled: true,
+    altText: 'Đặt in Album Cưới Photobook Vietnam - Giảm 20% đơn đầu tiên',
+  },
+  vipBanner2: {
+    imageUrl: DEFAULT_VIP_BANNER_2_IMAGE,
+    linkUrl: 'https://photobook.vn/bang-gia',
+    enabled: true,
+    altText: 'In Ảnh Cổng Pha Lê & Gỗ HD - Photobook Vietnam',
+  },
 };
 
 const LOCAL_STORAGE_KEY = 'smartpix_ad_banners_config_v2';
@@ -192,30 +317,52 @@ const LOCAL_STORAGE_KEY = 'smartpix_ad_banners_config_v2';
 export const fetchBannersConfig = async (): Promise<BannersConfig> => {
   let result: BannersConfig = { ...DEFAULT_BANNERS_CONFIG };
 
+  const mergeConfig = (parsed: any): BannersConfig => {
+    return {
+      leftBanner: {
+        ...DEFAULT_BANNERS_CONFIG.leftBanner,
+        ...(parsed?.leftBanner || {}),
+        mediaType: parsed?.leftBanner?.mediaType || 'image',
+        youtubeUrl: parsed?.leftBanner?.youtubeUrl || '',
+        width: typeof parsed?.leftBanner?.width === 'number' ? parsed.leftBanner.width : 260,
+        imageUrl: parsed?.leftBanner?.imageUrl || DEFAULT_LEFT_BANNER_IMAGE,
+      },
+      rightBanner: {
+        ...DEFAULT_BANNERS_CONFIG.rightBanner,
+        ...(parsed?.rightBanner || {}),
+        mediaType: parsed?.rightBanner?.mediaType || 'image',
+        youtubeUrl: parsed?.rightBanner?.youtubeUrl || '',
+        width: typeof parsed?.rightBanner?.width === 'number' ? parsed.rightBanner.width : 260,
+        imageUrl: parsed?.rightBanner?.imageUrl || DEFAULT_RIGHT_BANNER_IMAGE,
+      },
+      vipBanner1: {
+        ...DEFAULT_BANNERS_CONFIG.vipBanner1!,
+        ...(parsed?.vipBanner1 || {}),
+        mediaType: parsed?.vipBanner1?.mediaType || 'image',
+        youtubeUrl: parsed?.vipBanner1?.youtubeUrl || '',
+        imageUrl: typeof parsed?.vipBanner1?.imageUrl === 'string' ? parsed.vipBanner1.imageUrl : DEFAULT_VIP_BANNER_1_IMAGE,
+        enabled: parsed?.vipBanner1?.enabled !== undefined ? parsed.vipBanner1.enabled : true,
+        linkUrl: typeof parsed?.vipBanner1?.linkUrl === 'string' ? parsed.vipBanner1.linkUrl : 'https://photobook.vn',
+      },
+      vipBanner2: {
+        ...DEFAULT_BANNERS_CONFIG.vipBanner2!,
+        ...(parsed?.vipBanner2 || {}),
+        mediaType: parsed?.vipBanner2?.mediaType || 'image',
+        youtubeUrl: parsed?.vipBanner2?.youtubeUrl || '',
+        imageUrl: typeof parsed?.vipBanner2?.imageUrl === 'string' ? parsed.vipBanner2.imageUrl : DEFAULT_VIP_BANNER_2_IMAGE,
+        enabled: parsed?.vipBanner2?.enabled !== undefined ? parsed.vipBanner2.enabled : true,
+        linkUrl: typeof parsed?.vipBanner2?.linkUrl === 'string' ? parsed.vipBanner2.linkUrl : 'https://photobook.vn/bang-gia',
+      },
+    };
+  };
+
   // 1. Instant local storage read
   try {
     const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
     if (saved) {
       const parsed = JSON.parse(saved);
       if (parsed?.leftBanner && parsed?.rightBanner) {
-        result = {
-          leftBanner: {
-            ...DEFAULT_BANNERS_CONFIG.leftBanner,
-            ...parsed.leftBanner,
-            mediaType: parsed.leftBanner.mediaType || 'image',
-            youtubeUrl: parsed.leftBanner.youtubeUrl || '',
-            width: typeof parsed.leftBanner.width === 'number' ? parsed.leftBanner.width : 260,
-            imageUrl: parsed.leftBanner.imageUrl || DEFAULT_LEFT_BANNER_IMAGE,
-          },
-          rightBanner: {
-            ...DEFAULT_BANNERS_CONFIG.rightBanner,
-            ...parsed.rightBanner,
-            mediaType: parsed.rightBanner.mediaType || 'image',
-            youtubeUrl: parsed.rightBanner.youtubeUrl || '',
-            width: typeof parsed.rightBanner.width === 'number' ? parsed.rightBanner.width : 260,
-            imageUrl: parsed.rightBanner.imageUrl || DEFAULT_RIGHT_BANNER_IMAGE,
-          },
-        };
+        result = mergeConfig(parsed);
       }
     }
   } catch {}
@@ -227,24 +374,7 @@ export const fetchBannersConfig = async (): Promise<BannersConfig> => {
       if (bannerDoc.exists()) {
         const d = bannerDoc.data();
         if (d?.leftBanner && d?.rightBanner) {
-          result = {
-            leftBanner: {
-              ...result.leftBanner,
-              ...d.leftBanner,
-              mediaType: d.leftBanner.mediaType || result.leftBanner.mediaType || 'image',
-              youtubeUrl: d.leftBanner.youtubeUrl ?? result.leftBanner.youtubeUrl ?? '',
-              width: typeof d.leftBanner.width === 'number' ? d.leftBanner.width : result.leftBanner.width,
-              imageUrl: d.leftBanner.imageUrl || result.leftBanner.imageUrl,
-            },
-            rightBanner: {
-              ...result.rightBanner,
-              ...d.rightBanner,
-              mediaType: d.rightBanner.mediaType || result.rightBanner.mediaType || 'image',
-              youtubeUrl: d.rightBanner.youtubeUrl ?? result.rightBanner.youtubeUrl ?? '',
-              width: typeof d.rightBanner.width === 'number' ? d.rightBanner.width : result.rightBanner.width,
-              imageUrl: d.rightBanner.imageUrl || result.rightBanner.imageUrl,
-            },
-          };
+          result = mergeConfig(d);
           localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(result));
           return result;
         }
@@ -260,24 +390,7 @@ export const fetchBannersConfig = async (): Promise<BannersConfig> => {
     if (res.ok) {
       const data = await res.json();
       if (data?.banners?.leftBanner && data?.banners?.rightBanner) {
-        result = {
-          leftBanner: {
-            ...result.leftBanner,
-            ...data.banners.leftBanner,
-            mediaType: data.banners.leftBanner.mediaType || result.leftBanner.mediaType || 'image',
-            youtubeUrl: data.banners.leftBanner.youtubeUrl ?? result.leftBanner.youtubeUrl ?? '',
-            width: typeof data.banners.leftBanner.width === 'number' ? data.banners.leftBanner.width : result.leftBanner.width,
-            imageUrl: data.banners.leftBanner.imageUrl || result.leftBanner.imageUrl,
-          },
-          rightBanner: {
-            ...result.rightBanner,
-            ...data.banners.rightBanner,
-            mediaType: data.banners.rightBanner.mediaType || result.rightBanner.mediaType || 'image',
-            youtubeUrl: data.banners.rightBanner.youtubeUrl ?? result.rightBanner.youtubeUrl ?? '',
-            width: typeof data.banners.rightBanner.width === 'number' ? data.banners.rightBanner.width : result.rightBanner.width,
-            imageUrl: data.banners.rightBanner.imageUrl || result.rightBanner.imageUrl,
-          },
-        };
+        result = mergeConfig(data.banners);
         localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(result));
       }
     }

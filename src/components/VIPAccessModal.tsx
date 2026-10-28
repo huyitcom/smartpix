@@ -1,6 +1,9 @@
-import React, { useState } from 'react';
-import { LogIn, PhoneCall, Sparkles, X, ArrowLeft, Crown, KeyRound, CheckCircle2, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { LogIn, PhoneCall, Sparkles, X, ArrowLeft, Crown, KeyRound, CheckCircle2, AlertCircle, ExternalLink } from 'lucide-react';
 import { UserProfile, signInWithGoogle, markTrialAsUsed, validateAccessCode } from '../firebase';
+import { BannersConfig } from '../types';
+import { fetchBannersConfig, DEFAULT_BANNERS_CONFIG, DEFAULT_VIP_BANNER_1_IMAGE, DEFAULT_VIP_BANNER_2_IMAGE } from '../services/bannerService';
+import { getYouTubeEmbedInfo } from '../utils/youtubeHelper';
 import AuthModal from './AuthModal';
 
 export type VIPModalStep = 'closed' | 'login_required' | 'customer_check' | 'already_customer' | 'new_customer';
@@ -25,6 +28,17 @@ export default function VIPAccessModal({
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [vipCodeInput, setVipCodeInput] = useState('');
   const [codeFeedback, setCodeFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [bannersConfig, setBannersConfig] = useState<BannersConfig>(DEFAULT_BANNERS_CONFIG);
+
+  // Load banners configuration and sync with updates
+  useEffect(() => {
+    fetchBannersConfig().then((cfg) => setBannersConfig(cfg));
+    const handleUpdate = (e: any) => {
+      if (e?.detail) setBannersConfig(e.detail);
+    };
+    window.addEventListener('smartpix_banners_updated', handleUpdate);
+    return () => window.removeEventListener('smartpix_banners_updated', handleUpdate);
+  }, []);
 
   // Synchronize internal state when prop changes
   React.useEffect(() => {
@@ -86,18 +100,58 @@ export default function VIPAccessModal({
     }
   };
 
+  // Check active banners for new customer popup
+  const b1 = bannersConfig.vipBanner1;
+  const b2 = bannersConfig.vipBanner2;
+  const b1Youtube = getYouTubeEmbedInfo(b1?.youtubeUrl);
+  const b2Youtube = getYouTubeEmbedInfo(b2?.youtubeUrl);
+
+  const hasB1 = Boolean(b1?.enabled !== false && ((b1?.mediaType === 'youtube' && b1Youtube) || (b1?.imageUrl && b1.imageUrl.trim() !== '')));
+  const hasB2 = Boolean(b2?.enabled !== false && ((b2?.mediaType === 'youtube' && b2Youtube) || (b2?.imageUrl && b2.imageUrl.trim() !== '')));
+
+  const isB1Default = b1?.imageUrl === DEFAULT_VIP_BANNER_1_IMAGE && b1?.mediaType !== 'youtube';
+  const isB2Default = b2?.imageUrl === DEFAULT_VIP_BANNER_2_IMAGE && b2?.mediaType !== 'youtube';
+
+  const isB1Custom = hasB1 && !isB1Default;
+  const isB2Custom = hasB2 && !isB2Default;
+
+  // Rule: "Nếu chỉ upload 1 banner thì hiện 1 banner thôi và ẩn banner còn lại đi"
+  let showB1 = hasB1;
+  let showB2 = hasB2;
+  if (isB1Custom && !isB2Custom) {
+    showB2 = false;
+  } else if (isB2Custom && !isB1Custom) {
+    showB1 = false;
+  }
+  const activeBannersCount = (showB1 ? 1 : 0) + (showB2 ? 1 : 0);
+
+  const handleBannerClick = (url?: string) => {
+    if (!url) return;
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } else if (url.startsWith('tel:')) {
+      window.location.href = url;
+    } else {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+  };
+
   return (
     <>
       {currentStep !== 'closed' && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div 
-            className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6 sm:p-8 relative border border-slate-100 flex flex-col items-center text-center animate-in fade-in zoom-in-95 duration-150"
+            className={`bg-white rounded-3xl shadow-2xl w-full p-5 sm:p-7 relative border border-slate-100 flex flex-col items-center text-center animate-in fade-in zoom-in-95 duration-150 transition-all ${
+              currentStep === 'new_customer' 
+                ? (activeBannersCount === 2 ? 'max-w-2xl max-h-[92vh] overflow-y-auto' : 'max-w-lg max-h-[92vh] overflow-y-auto') 
+                : 'max-w-md'
+            }`}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Close Button top right */}
             <button
               onClick={onClose}
-              className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 transition"
+              className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 transition z-20 cursor-pointer"
               aria-label="Đóng"
             >
               <X className="w-5 h-5" />
@@ -320,58 +374,151 @@ export default function VIPAccessModal({
             {/* 4. KHI BẤM "CHƯA LÀ KHÁCH HÀNG" */}
             {currentStep === 'new_customer' && (
               <div className="flex flex-col items-center w-full">
-                <div className="w-16 h-16 rounded-full bg-sky-100 flex items-center justify-center text-sky-500 mb-5">
+                <div className="w-14 h-14 rounded-full bg-sky-100 flex items-center justify-center text-sky-500 mb-3 shadow-xs">
                   <Sparkles className="w-7 h-7 stroke-[2.2]" />
                 </div>
 
-                <h3 className="text-lg sm:text-xl font-bold text-slate-800 mb-3">
+                <h3 className="text-xl sm:text-2xl font-black text-slate-800 mb-2">
                   Trải nghiệm tính năng VIP
                 </h3>
 
-                <p className="text-sm sm:text-base text-slate-600 leading-relaxed mb-5 font-medium">
+                <p className="text-xs sm:text-sm text-slate-600 leading-relaxed mb-3 max-w-lg font-medium">
                   Nếu chưa đặt in tại Photobook Vietnam, hãy đặt đơn hàng đầu tiên để trở thành khách hàng VIP hoặc sử dụng 1 lượt dùng thử miễn phí này:
                 </p>
 
+                {/* Yêu cầu người dùng: Đem dòng "Rất đơn giản để..." xuống dưới dòng "Nếu chưa đặt in tại ..." */}
+                <div className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-sky-50 border border-sky-200/80 text-sky-700 text-xs sm:text-sm font-bold mb-4 shadow-2xs">
+                  <Sparkles className="w-3.5 h-3.5 text-sky-500 shrink-0" />
+                  <span>Rất đơn giản để trở thành khách hàng của Photobook Vietnam</span>
+                </div>
+
+                {/* Banner Quảng Cáo Khách Hàng Mới (Nếu chỉ upload 1 banner thì hiện 1 banner thôi và ẩn banner còn lại đi) */}
+                {activeBannersCount > 0 && (
+                  <div className={`w-full mb-4 text-left ${
+                    activeBannersCount === 2 ? 'grid grid-cols-1 sm:grid-cols-2 gap-3.5' : 'max-w-md mx-auto'
+                  }`}>
+                    {/* Banner 1 */}
+                    {showB1 && (
+                      <div
+                        onClick={() => handleBannerClick(b1?.linkUrl)}
+                        className="group relative rounded-2xl overflow-hidden border border-slate-200 bg-slate-900 shadow-sm hover:shadow-xl transition-all duration-300 cursor-pointer transform hover:-translate-y-0.5"
+                        title="Bấm để xem chi tiết ưu đãi"
+                      >
+                        {b1?.mediaType === 'youtube' && b1Youtube ? (
+                          <div className="w-full aspect-[16/9] overflow-hidden bg-black">
+                            <iframe
+                              src={b1Youtube.embedUrl}
+                              title="Video ưu đãi Photobook Vietnam 1"
+                              className="w-full h-full border-0 pointer-events-auto"
+                              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                              allowFullScreen
+                            />
+                          </div>
+                        ) : (
+                          <div className="relative w-full aspect-[400/220] overflow-hidden bg-slate-950 flex items-center justify-center">
+                            <img
+                              src={b1?.imageUrl}
+                              alt={b1?.altText || 'Ưu đãi Photobook Vietnam 1'}
+                              className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                              onError={(e) => {
+                                (e.target as HTMLElement).style.display = 'none';
+                              }}
+                            />
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-2.5">
+                              <span className="text-[11px] font-bold text-white flex items-center gap-1 drop-shadow-md">
+                                <span>Xem chi tiết ưu đãi</span>
+                                <ExternalLink className="w-3 h-3" />
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Banner 2 */}
+                    {showB2 && (
+                      <div
+                        onClick={() => handleBannerClick(b2?.linkUrl)}
+                        className="group relative rounded-2xl overflow-hidden border border-slate-200 bg-slate-900 shadow-sm hover:shadow-xl transition-all duration-300 cursor-pointer transform hover:-translate-y-0.5"
+                        title="Bấm để xem chi tiết ưu đãi"
+                      >
+                        {b2?.mediaType === 'youtube' && b2Youtube ? (
+                          <div className="w-full aspect-[16/9] overflow-hidden bg-black">
+                            <iframe
+                              src={b2Youtube.embedUrl}
+                              title="Video ưu đãi Photobook Vietnam 2"
+                              className="w-full h-full border-0 pointer-events-auto"
+                              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                              allowFullScreen
+                            />
+                          </div>
+                        ) : (
+                          <div className="relative w-full aspect-[400/220] overflow-hidden bg-slate-950 flex items-center justify-center">
+                            <img
+                              src={b2?.imageUrl}
+                              alt={b2?.altText || 'Ưu đãi Photobook Vietnam 2'}
+                              className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                              onError={(e) => {
+                                (e.target as HTMLElement).style.display = 'none';
+                              }}
+                            />
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-2.5">
+                              <span className="text-[11px] font-bold text-white flex items-center gap-1 drop-shadow-md">
+                                <span>Xem chi tiết ưu đãi</span>
+                                <ExternalLink className="w-3 h-3" />
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {!isTrialUsed ? (
-                  <div className="flex flex-col gap-3 w-full">
+                  <div className="flex flex-col sm:flex-row items-center gap-3 w-full max-w-md">
+                    <button
+                      type="button"
+                      onClick={() => setCurrentStep('customer_check')}
+                      className="w-full sm:w-auto px-5 py-3 rounded-2xl text-xs sm:text-sm text-slate-500 hover:text-slate-700 hover:bg-slate-100 font-bold transition flex items-center justify-center gap-1 cursor-pointer order-2 sm:order-1"
+                    >
+                      <ArrowLeft className="w-4 h-4" />
+                      <span>Quay lại</span>
+                    </button>
+
                     <button
                       type="button"
                       onClick={handleUseTrial}
-                      className="w-full py-3.5 px-6 rounded-2xl bg-sky-500 hover:bg-sky-600 text-white font-bold flex items-center justify-center gap-2 shadow-md transition-all text-sm sm:text-base cursor-pointer active:scale-[0.99]"
+                      className="w-full flex-1 py-3.5 px-6 rounded-2xl bg-sky-500 hover:bg-sky-600 text-white font-bold flex items-center justify-center gap-2 shadow-md transition-all text-sm sm:text-base cursor-pointer active:scale-[0.99] order-1 sm:order-2"
                     >
                       <Sparkles className="w-5 h-5" />
                       <span>Sử dụng 1 lượt miễn phí</span>
                     </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setCurrentStep('customer_check')}
-                      className="text-xs text-slate-400 hover:text-slate-600 font-semibold transition py-1"
-                    >
-                      Quay lại
-                    </button>
                   </div>
                 ) : (
-                  <div className="flex flex-col items-center w-full">
-                    <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl text-amber-800 text-xs sm:text-sm font-semibold mb-4 leading-relaxed">
+                  <div className="flex flex-col items-center w-full max-w-md">
+                    <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl text-amber-800 text-xs sm:text-sm font-semibold mb-3.5 leading-relaxed text-center w-full">
                       Bạn đã sử dụng hết lượt trải nghiệm miễn phí. Vui lòng liên hệ Photobook Vietnam để nâng cấp VIP!
                     </div>
 
-                    <a
-                      href="tel:0938023079"
-                      className="w-full py-3 px-6 rounded-2xl bg-sky-500 hover:bg-sky-600 text-white font-bold flex items-center justify-center gap-2 shadow-md transition-all text-sm mb-3"
-                    >
-                      <PhoneCall className="w-4 h-4" />
-                      <span>Liên hệ Hotline: 0938023079</span>
-                    </a>
+                    <div className="flex flex-col sm:flex-row items-center gap-2.5 w-full">
+                      <button
+                        type="button"
+                        onClick={() => setCurrentStep('customer_check')}
+                        className="w-full sm:w-auto px-4 py-3 rounded-2xl text-xs font-bold text-slate-500 hover:bg-slate-100 transition flex items-center justify-center gap-1 cursor-pointer"
+                      >
+                        <ArrowLeft className="w-4 h-4" />
+                        <span>Quay lại</span>
+                      </button>
 
-                    <button
-                      type="button"
-                      onClick={onClose}
-                      className="w-full py-2.5 px-4 rounded-xl text-slate-600 hover:bg-slate-100 text-xs sm:text-sm font-bold transition"
-                    >
-                      Đóng
-                    </button>
+                      <a
+                        href="tel:0938023079"
+                        className="flex-1 w-full py-3 px-5 rounded-2xl bg-sky-500 hover:bg-sky-600 text-white font-bold flex items-center justify-center gap-2 shadow-sm transition text-xs sm:text-sm"
+                      >
+                        <PhoneCall className="w-4 h-4" />
+                        <span>Liên hệ Hotline: 0938023079</span>
+                      </a>
+                    </div>
                   </div>
                 )}
               </div>

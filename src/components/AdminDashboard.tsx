@@ -23,6 +23,7 @@ import {
   ExternalLink,
   FolderOpen,
   Image as ImageIcon,
+  Layout,
   Upload,
   Trash2,
   Save,
@@ -44,6 +45,8 @@ import {
   DEFAULT_BANNERS_CONFIG,
   DEFAULT_LEFT_BANNER_IMAGE,
   DEFAULT_RIGHT_BANNER_IMAGE,
+  DEFAULT_VIP_BANNER_1_IMAGE,
+  DEFAULT_VIP_BANNER_2_IMAGE,
 } from '../services/bannerService';
 import { compressBannerImage } from '../utils/imageCompressor';
 import { getYouTubeEmbedInfo } from '../utils/youtubeHelper';
@@ -111,7 +114,8 @@ export default function AdminDashboard({
   const [bannersConfig, setBannersConfig] = useState<BannersConfig>(DEFAULT_BANNERS_CONFIG);
   const [bannersSaving, setBannersSaving] = useState(false);
   const [bannersLoaded, setBannersLoaded] = useState(false);
-  const [bannerOptimizing, setBannerOptimizing] = useState<{ left?: boolean; right?: boolean }>({});
+  const [bannerOptimizing, setBannerOptimizing] = useState<{ left?: boolean; right?: boolean; vip1?: boolean; vip2?: boolean }>({});
+  const [bannerSection, setBannerSection] = useState<'sidebar' | 'vip_modal'>('sidebar');
   const [copiedLinkId, setCopiedLinkId] = useState<string | null>(null);
   const [copiedDriveId, setCopiedDriveId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -152,7 +156,9 @@ export default function AdminDashboard({
     setTimeout(() => setCopiedDriveId(null), 2000);
   };
 
-  const handleBannerUpload = async (side: 'left' | 'right', e: React.ChangeEvent<HTMLInputElement>) => {
+  type BannerSlot = 'left' | 'right' | 'vip1' | 'vip2';
+
+  const handleBannerUpload = async (slot: BannerSlot, e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -161,25 +167,46 @@ export default function AdminDashboard({
       return;
     }
 
-    setBannerOptimizing((prev) => ({ ...prev, [side]: true }));
+    setBannerOptimizing((prev) => ({ ...prev, [slot]: true }));
     try {
-      showToast(`⏳ Đang tối ưu & nén ảnh cho Banner ${side === 'left' ? 'Trái' : 'Phải'}...`);
+      const slotName =
+        slot === 'left'
+          ? 'Banner Trái (Trang chủ)'
+          : slot === 'right'
+          ? 'Banner Phải (Trang chủ)'
+          : slot === 'vip1'
+          ? 'Banner 1 (Popup VIP)'
+          : 'Banner 2 (Popup VIP)';
+
+      showToast(`⏳ Đang tối ưu & nén ảnh cho ${slotName}...`);
       const { dataUrl, sizeKb, originalSizeKb } = await compressBannerImage(file);
+
+      const configKey: 'leftBanner' | 'rightBanner' | 'vipBanner1' | 'vipBanner2' =
+        slot === 'left'
+          ? 'leftBanner'
+          : slot === 'right'
+          ? 'rightBanner'
+          : slot === 'vip1'
+          ? 'vipBanner1'
+          : 'vipBanner2';
 
       setBannersConfig((prev) => ({
         ...prev,
-        [side === 'left' ? 'leftBanner' : 'rightBanner']: {
-          ...prev[side === 'left' ? 'leftBanner' : 'rightBanner'],
+        [configKey]: {
+          ...(prev[configKey] || {}),
           imageUrl: dataUrl,
+          mediaType: 'image',
+          enabled: true,
+          linkUrl: prev[configKey]?.linkUrl || (slot === 'vip2' ? 'https://photobook.vn/bang-gia' : 'https://photobook.vn'),
         },
       }));
       setBannersLoaded(true);
-      showToast(`✓ Đã nạp ảnh thành công (${originalSizeKb} KB ➜ ${sizeKb} KB - Siêu nhẹ, nét căng)! Nhớ bấm 'LƯU 2 BANNER NGAY'.`);
+      showToast(`✓ Đã nạp ảnh thành công (${originalSizeKb} KB ➜ ${sizeKb} KB)! Nhớ bấm 'LƯU TẤT CẢ BANNER'.`);
     } catch (err: any) {
       console.error('Error compressing banner:', err);
       showToast(`⚠️ Không thể xử lý ảnh: ${err?.message || 'Vui lòng thử file ảnh khác'}`);
     } finally {
-      setBannerOptimizing((prev) => ({ ...prev, [side]: false }));
+      setBannerOptimizing((prev) => ({ ...prev, [slot]: false }));
       e.target.value = '';
     }
   };
@@ -190,7 +217,7 @@ export default function AdminDashboard({
       const ok = await saveBannersConfig(bannersConfig);
       if (ok) {
         setBannersLoaded(true);
-        showToast('✓ Đã lưu cấu hình 2 banner quảng cáo thành công!');
+        showToast('✓ Đã lưu cấu hình tất cả banner quảng cáo thành công!');
       } else {
         showToast('⚠️ Lỗi khi lưu banner, vui lòng thử lại');
       }
@@ -201,16 +228,58 @@ export default function AdminDashboard({
     }
   };
 
-  const handleResetSideBanner = (side: 'left' | 'right') => {
+  const handleResetSideBanner = (slot: BannerSlot) => {
+    const configKey: 'leftBanner' | 'rightBanner' | 'vipBanner1' | 'vipBanner2' =
+      slot === 'left'
+        ? 'leftBanner'
+        : slot === 'right'
+        ? 'rightBanner'
+        : slot === 'vip1'
+        ? 'vipBanner1'
+        : 'vipBanner2';
+
+    const defaultImg =
+      slot === 'left'
+        ? DEFAULT_LEFT_BANNER_IMAGE
+        : slot === 'right'
+        ? DEFAULT_RIGHT_BANNER_IMAGE
+        : slot === 'vip1'
+        ? DEFAULT_VIP_BANNER_1_IMAGE
+        : DEFAULT_VIP_BANNER_2_IMAGE;
+
     setBannersConfig((prev) => ({
       ...prev,
-      [side === 'left' ? 'leftBanner' : 'rightBanner']: {
-        ...prev[side === 'left' ? 'leftBanner' : 'rightBanner'],
-        imageUrl: side === 'left' ? DEFAULT_LEFT_BANNER_IMAGE : DEFAULT_RIGHT_BANNER_IMAGE,
+      [configKey]: {
+        ...(prev[configKey] || {}),
+        imageUrl: defaultImg,
+        mediaType: 'image',
+        enabled: true,
       },
     }));
     setBannersLoaded(true);
-    showToast(`✓ Đã khôi phục ảnh mẫu cho Banner ${side === 'left' ? 'Trái' : 'Phải'}. Bấm 'Lưu' để áp dụng!`);
+    showToast(`✓ Đã khôi phục ảnh mẫu mặc định. Bấm 'Lưu' để áp dụng!`);
+  };
+
+  const handleClearBanner = (slot: BannerSlot) => {
+    const configKey: 'leftBanner' | 'rightBanner' | 'vipBanner1' | 'vipBanner2' =
+      slot === 'left'
+        ? 'leftBanner'
+        : slot === 'right'
+        ? 'rightBanner'
+        : slot === 'vip1'
+        ? 'vipBanner1'
+        : 'vipBanner2';
+
+    setBannersConfig((prev) => ({
+      ...prev,
+      [configKey]: {
+        ...(prev[configKey] || {}),
+        imageUrl: '',
+        youtubeUrl: '',
+      },
+    }));
+    setBannersLoaded(true);
+    showToast(`✓ Đã xóa ảnh banner. Bấm 'LƯU TẤT CẢ BANNER' để áp dụng!`);
   };
 
   const fetchOverview = useCallback(async () => {
@@ -1399,7 +1468,7 @@ export default function AdminDashboard({
             </div>
           )}
 
-          {/* TAB 5: QUẢN LÝ 2 BANNER HÌNH ẢNH 2 BÊN SƯỜN MÀN HÌNH */}
+          {/* TAB 5: QUẢN LÝ BANNER QUẢNG CÁO */}
           {activeTab === 'banners' && (
             <div className="space-y-6">
               {/* Header Box & Save Controls */}
@@ -1407,18 +1476,22 @@ export default function AdminDashboard({
                 <div>
                   <div className="flex items-center gap-2 mb-1">
                     <span className="px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 font-black text-[11px] uppercase tracking-wider border border-indigo-500/30">
-                      Giao Diện Trang Chủ
+                      {bannerSection === 'sidebar' ? 'Giao Diện Trang Chủ' : 'Popup Lọc Ảnh Máy Tính'}
                     </span>
                     <span className="text-emerald-400 text-xs font-bold flex items-center gap-1">
                       <CheckCircle2 className="w-3.5 h-3.5" />
-                      Mặc định hiển thị 2 bên sườn
+                      {bannerSection === 'sidebar' ? 'Mặc định hiển thị 2 bên sườn' : 'Hiển thị trong popup VIP'}
                     </span>
                   </div>
                   <h2 className="text-lg font-black text-white">
-                    Quản Lý Hình Ảnh 2 Banner Quảng Cáo Sườn Màn Hình
+                    {bannerSection === 'sidebar'
+                      ? 'Quản Lý Hình Ảnh 2 Banner Quảng Cáo Sườn Màn Hình'
+                      : 'Quản Lý 2 Banner Popup Trải Nghiệm VIP (Khách Hàng Mới)'}
                   </h2>
                   <p className="text-xs text-slate-400 mt-1 max-w-2xl leading-relaxed">
-                    Tải lên 1 tấm hình cho mỗi banner (không cần text). Hình ảnh sẽ xuất hiện cố định ở 2 bên sườn màn hình máy tính và bên dưới trang trên di động.
+                    {bannerSection === 'sidebar'
+                      ? 'Tải lên 1 tấm hình cho mỗi banner (không cần text). Hình ảnh sẽ xuất hiện cố định ở 2 bên sườn màn hình máy tính và bên dưới trang trên di động.'
+                      : 'Cấu hình 2 banner quảng cáo ưu đãi hiển thị trong popup "Trải nghiệm tính năng VIP" cho thành viên chưa là khách hàng của Photobook Vietnam.'}
                   </p>
                 </div>
 
@@ -1445,13 +1518,43 @@ export default function AdminDashboard({
                     ) : (
                       <Save className="w-4 h-4" />
                     )}
-                    <span>{bannersSaving ? 'Đang lưu...' : 'LƯU 2 BANNER NGAY'}</span>
+                    <span>{bannersSaving ? 'Đang lưu...' : 'LƯU TẤT CẢ BANNER'}</span>
                   </button>
                 </div>
               </div>
 
-              {/* 2 Banner Columns */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Sub-navigation tabs: 1. Banner Sườn Trang Chủ | 2. 2 Banner Popup VIP (Khách Hàng Mới) */}
+              <div className="flex items-center gap-2 p-1.5 bg-[#0a0e19] rounded-2xl border border-slate-800 w-full sm:w-fit flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setBannerSection('sidebar')}
+                  className={`px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
+                    bannerSection === 'sidebar'
+                      ? 'bg-rose-600 text-white shadow-md'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <Layout className="w-3.5 h-3.5" />
+                  <span>1. Banner Sườn Màn Hình (Trang Chủ)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setBannerSection('vip_modal')}
+                  className={`px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
+                    bannerSection === 'vip_modal'
+                      ? 'bg-sky-500 text-white shadow-md'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>2. 2 Banner Popup Trải Nghiệm VIP (Khách Hàng Mới)</span>
+                </button>
+              </div>
+
+              {/* 1. SECTION: SIDEBAR BANNERS */}
+              {bannerSection === 'sidebar' && (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* 1. BANNER BÊN TRÁI (LEFT SIDE) */}
                 <div className="bg-[#121728] border border-slate-800/90 rounded-3xl p-6 shadow-xl flex flex-col justify-between space-y-5">
                   <div className="space-y-4">
@@ -2128,11 +2231,529 @@ export default function AdminDashboard({
                   </div>
                 </div>
               </div>
+              )}
+
+              {/* 2. SECTION: VIP POPUP BANNERS (KHÁCH HÀNG MỚI) */}
+              {bannerSection === 'vip_modal' && (
+                <div className="space-y-4">
+                  {/* Tip banner */}
+                  <div className="bg-sky-950/40 border border-sky-500/30 rounded-2xl p-4 flex items-start gap-3">
+                    <Sparkles className="w-5 h-5 text-sky-400 shrink-0 mt-0.5" />
+                    <div className="text-xs text-sky-200/90 leading-relaxed">
+                      <b className="text-white">Quy tắc hiển thị thông minh:</b> Nếu bạn chỉ tải lên <b>1 banner</b> (hoặc tắt/xóa banner còn lại), popup trải nghiệm VIP sẽ tự động chỉ hiển thị <b>duy nhất 1 banner</b> đó ở vị trí trung tâm cân đối và tự động ẩn banner còn lại đi. Khi tải đủ cả 2 banner, popup sẽ tự động dàn đều song song 2 bên.
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* VIP BANNER 1 */}
+                  <div className="bg-[#121728] border border-slate-800/90 rounded-3xl p-6 shadow-xl flex flex-col justify-between space-y-5">
+                    <div className="space-y-4">
+                      {/* Header + Toggle */}
+                      <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                        <div>
+                          <div className="text-[11px] font-extrabold uppercase tracking-wider text-sky-400">
+                            POPUP VIP BANNER #1
+                          </div>
+                          <h3 className="text-base font-black text-white mt-0.5">
+                            Banner Ưu Đãi #1 (Khách Hàng Mới)
+                          </h3>
+                        </div>
+
+                        <label className="flex items-center gap-2 cursor-pointer select-none">
+                          <span className="text-xs font-bold text-slate-300">
+                            {bannersConfig.vipBanner1?.enabled !== false ? 'Đang Bật' : 'Đang Tắt'}
+                          </span>
+                          <input
+                            type="checkbox"
+                            checked={bannersConfig.vipBanner1?.enabled !== false}
+                            onChange={(e) =>
+                              setBannersConfig((prev) => ({
+                                ...prev,
+                                vipBanner1: {
+                                  ...(prev.vipBanner1 || { imageUrl: DEFAULT_VIP_BANNER_1_IMAGE, linkUrl: 'https://photobook.vn', enabled: true }),
+                                  enabled: e.target.checked,
+                                },
+                              }))
+                            }
+                            className="w-5 h-5 accent-sky-500 rounded cursor-pointer"
+                          />
+                        </label>
+                      </div>
+
+                      {/* Tùy chọn định dạng: Hình ảnh hoặc Video YouTube */}
+                      <div className="flex items-center gap-1.5 p-1 bg-[#0a0e19] rounded-xl border border-slate-800">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setBannersConfig((prev) => ({
+                              ...prev,
+                              vipBanner1: { ...(prev.vipBanner1 || { imageUrl: DEFAULT_VIP_BANNER_1_IMAGE, linkUrl: 'https://photobook.vn', enabled: true }), mediaType: 'image' },
+                            }));
+                            setBannersLoaded(true);
+                          }}
+                          className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                            (bannersConfig.vipBanner1?.mediaType || 'image') === 'image'
+                              ? 'bg-sky-600 text-white shadow'
+                              : 'text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          <ImageIcon className="w-3.5 h-3.5" />
+                          <span>Hình ảnh</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setBannersConfig((prev) => ({
+                              ...prev,
+                              vipBanner1: { ...(prev.vipBanner1 || { imageUrl: DEFAULT_VIP_BANNER_1_IMAGE, linkUrl: 'https://photobook.vn', enabled: true }), mediaType: 'youtube' },
+                            }));
+                            setBannersLoaded(true);
+                          }}
+                          className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                            bannersConfig.vipBanner1?.mediaType === 'youtube'
+                              ? 'bg-red-600 text-white shadow'
+                              : 'text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          <Video className="w-3.5 h-3.5" />
+                          <span>Video YouTube</span>
+                        </button>
+                      </div>
+
+                      {/* Preview box */}
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <label className="text-xs font-bold text-slate-300">
+                            {bannersConfig.vipBanner1?.mediaType === 'youtube'
+                              ? 'Video YouTube (Xem trước):'
+                              : 'Hình ảnh hiển thị (Xem trước):'}
+                          </label>
+                          {bannersConfig.vipBanner1?.mediaType === 'youtube' ? (
+                            (() => {
+                              const info = getYouTubeEmbedInfo(bannersConfig.vipBanner1?.youtubeUrl);
+                              return info ? (
+                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/20 text-red-300 font-bold border border-red-500/30">
+                                  ✓ YouTube {info.isShorts ? 'Shorts' : 'Video'}
+                                </span>
+                              ) : null;
+                            })()
+                          ) : bannersConfig.vipBanner1?.imageUrl?.startsWith('data:') ? (
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
+                              ✓ Ảnh nén tối ưu sẵn sàng
+                            </span>
+                          ) : null}
+                        </div>
+
+                        <div className="relative group rounded-2xl overflow-hidden border-2 border-dashed border-slate-700 bg-[#0a0e1a] p-3 flex items-center justify-center min-h-[200px]">
+                          {bannersConfig.vipBanner1?.mediaType === 'youtube' ? (
+                            (() => {
+                              const info = getYouTubeEmbedInfo(bannersConfig.vipBanner1?.youtubeUrl);
+                              return info ? (
+                                <div className="w-full aspect-video rounded-xl overflow-hidden border border-slate-700 bg-black">
+                                  <iframe
+                                    src={info.embedUrl}
+                                    title="YouTube preview"
+                                    className="w-full h-full border-0"
+                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                    allowFullScreen
+                                  />
+                                </div>
+                              ) : (
+                                <div className="text-center text-slate-500 text-xs p-6 space-y-2">
+                                  <Video className="w-8 h-8 text-slate-600 mx-auto" />
+                                  <div>Chưa có video YouTube. Vui lòng dán link video vào ô bên dưới.</div>
+                                </div>
+                              );
+                            })()
+                          ) : bannerOptimizing.vip1 ? (
+                            <div className="flex flex-col items-center gap-2 py-10 text-sky-400">
+                              <Loader2 className="w-8 h-8 animate-spin" />
+                              <span className="text-xs font-bold">Đang nén & tối ưu ảnh...</span>
+                            </div>
+                          ) : bannersConfig.vipBanner1?.imageUrl ? (
+                            <div className="relative w-full max-w-[360px] mx-auto">
+                              <img
+                                src={bannersConfig.vipBanner1.imageUrl}
+                                alt="Banner VIP 1"
+                                className="w-full h-auto aspect-[400/220] object-cover rounded-xl shadow-lg border border-slate-700"
+                                onError={(e) => {
+                                  (e.target as HTMLElement).style.display = 'none';
+                                }}
+                              />
+                              <div className="text-center text-[10px] text-slate-500 mt-2">
+                                Tỷ lệ khuyến nghị: 16:9 hoặc ~400 x 220px (Khung ngang)
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="text-center text-slate-500 text-xs py-8 space-y-1">
+                              <div className="font-semibold text-slate-400">Chưa có ảnh banner (Đang để trống)</div>
+                              <div className="text-[11px] text-slate-500">Nếu banner này để trống, hệ thống sẽ tự động chỉ hiện banner còn lại.</div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Inputs depending on Media Type */}
+                      {bannersConfig.vipBanner1?.mediaType === 'youtube' ? (
+                        <div className="space-y-1.5 pt-1">
+                          <label className="block text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                            <Video className="w-3.5 h-3.5 text-red-400" />
+                            <span>Dán link video YouTube (watch, shorts, embed, youtu.be):</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={bannersConfig.vipBanner1?.youtubeUrl || ''}
+                            onChange={(e) => {
+                              const val = e.target.value.trim();
+                              setBannersConfig((prev) => ({
+                                ...prev,
+                                vipBanner1: { ...(prev.vipBanner1 || { imageUrl: DEFAULT_VIP_BANNER_1_IMAGE, linkUrl: 'https://photobook.vn', enabled: true }), youtubeUrl: val, mediaType: 'youtube' },
+                              }));
+                              setBannersLoaded(true);
+                            }}
+                            placeholder="https://www.youtube.com/watch?v=... hoặc shorts"
+                            className="w-full px-3.5 py-2.5 rounded-xl bg-[#0a0e19] border border-slate-700 text-white text-xs placeholder-slate-500 outline-none focus:border-red-500 transition"
+                          />
+                        </div>
+                      ) : (
+                        <>
+                          <div className="flex items-center gap-2 pt-1 flex-wrap">
+                            <label className="flex-1 min-w-[170px] px-4 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs flex items-center justify-center gap-2 cursor-pointer shadow transition active:scale-98">
+                              <Upload className="w-4 h-4" />
+                              <span>Tải ảnh từ máy tính</span>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={(e) => handleBannerUpload('vip1', e)}
+                              />
+                            </label>
+
+                            <button
+                              type="button"
+                              onClick={() => handleResetSideBanner('vip1')}
+                              className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-semibold text-xs transition cursor-pointer border border-slate-700"
+                              title="Khôi phục ảnh mẫu ban đầu"
+                            >
+                              Khôi phục ảnh mẫu
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleClearBanner('vip1')}
+                              className="px-3 py-2.5 rounded-xl bg-slate-800 hover:bg-rose-950 text-slate-400 hover:text-rose-300 font-semibold text-xs transition cursor-pointer border border-slate-700 hover:border-rose-700/50"
+                              title="Xóa ảnh để trống banner này"
+                            >
+                              Xóa ảnh / Để trống
+                            </button>
+                          </div>
+
+                          <div className="space-y-1.5 pt-1">
+                            <label className="block text-xs font-bold text-slate-300">
+                              Hoặc nhập link URL ảnh trực tiếp (Tùy chọn):
+                            </label>
+                            <input
+                              type="text"
+                              value={bannersConfig.vipBanner1?.imageUrl?.startsWith('data:') ? '' : (bannersConfig.vipBanner1?.imageUrl || '')}
+                              onChange={(e) => {
+                                const val = e.target.value.trim();
+                                if (val) {
+                                  setBannersConfig((prev) => ({
+                                    ...prev,
+                                    vipBanner1: { ...(prev.vipBanner1 || { linkUrl: 'https://photobook.vn', enabled: true }), imageUrl: val, mediaType: 'image' },
+                                  }));
+                                  setBannersLoaded(true);
+                                }
+                              }}
+                              placeholder="https://... (Nếu có sẵn link ảnh online)"
+                              className="w-full px-3.5 py-2 rounded-xl bg-[#0a0e19] border border-slate-700 text-white text-xs placeholder-slate-500 outline-none focus:border-sky-500 transition"
+                            />
+                          </div>
+                        </>
+                      )}
+
+                      {/* Destination URL */}
+                      <div className="space-y-1.5 pt-1">
+                        <label className="block text-xs font-bold text-slate-300">
+                          Link chuyển đến khi khách bấm vào ảnh (Tùy chọn):
+                        </label>
+                        <input
+                          type="text"
+                          value={bannersConfig.vipBanner1?.linkUrl || ''}
+                          onChange={(e) =>
+                            setBannersConfig((prev) => ({
+                              ...prev,
+                              vipBanner1: { ...(prev.vipBanner1 || { imageUrl: DEFAULT_VIP_BANNER_1_IMAGE, enabled: true }), linkUrl: e.target.value },
+                            }))
+                          }
+                          placeholder="https://photobook.vn..."
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-[#0a0e19] border border-slate-700 text-white text-xs placeholder-slate-500 outline-none focus:border-sky-500 transition"
+                        />
+                        <p className="text-[11px] text-slate-500">
+                          * Nhập link website Photobook Vietnam hoặc link trang sản phẩm để khách đặt in.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* VIP BANNER 2 */}
+                  <div className="bg-[#121728] border border-slate-800/90 rounded-3xl p-6 shadow-xl flex flex-col justify-between space-y-5">
+                    <div className="space-y-4">
+                      {/* Header + Toggle */}
+                      <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                        <div>
+                          <div className="text-[11px] font-extrabold uppercase tracking-wider text-cyan-400">
+                            POPUP VIP BANNER #2
+                          </div>
+                          <h3 className="text-base font-black text-white mt-0.5">
+                            Banner Ưu Đãi #2 (Khách Hàng Mới)
+                          </h3>
+                        </div>
+
+                        <label className="flex items-center gap-2 cursor-pointer select-none">
+                          <span className="text-xs font-bold text-slate-300">
+                            {bannersConfig.vipBanner2?.enabled !== false ? 'Đang Bật' : 'Đang Tắt'}
+                          </span>
+                          <input
+                            type="checkbox"
+                            checked={bannersConfig.vipBanner2?.enabled !== false}
+                            onChange={(e) =>
+                              setBannersConfig((prev) => ({
+                                ...prev,
+                                vipBanner2: {
+                                  ...(prev.vipBanner2 || { imageUrl: DEFAULT_VIP_BANNER_2_IMAGE, linkUrl: 'https://photobook.vn/bang-gia', enabled: true }),
+                                  enabled: e.target.checked,
+                                },
+                              }))
+                            }
+                            className="w-5 h-5 accent-cyan-500 rounded cursor-pointer"
+                          />
+                        </label>
+                      </div>
+
+                      {/* Tùy chọn định dạng: Hình ảnh hoặc Video YouTube */}
+                      <div className="flex items-center gap-1.5 p-1 bg-[#0a0e19] rounded-xl border border-slate-800">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setBannersConfig((prev) => ({
+                              ...prev,
+                              vipBanner2: { ...(prev.vipBanner2 || { imageUrl: DEFAULT_VIP_BANNER_2_IMAGE, linkUrl: 'https://photobook.vn/bang-gia', enabled: true }), mediaType: 'image' },
+                            }));
+                            setBannersLoaded(true);
+                          }}
+                          className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                            (bannersConfig.vipBanner2?.mediaType || 'image') === 'image'
+                              ? 'bg-cyan-600 text-white shadow'
+                              : 'text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          <ImageIcon className="w-3.5 h-3.5" />
+                          <span>Hình ảnh</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setBannersConfig((prev) => ({
+                              ...prev,
+                              vipBanner2: { ...(prev.vipBanner2 || { imageUrl: DEFAULT_VIP_BANNER_2_IMAGE, linkUrl: 'https://photobook.vn/bang-gia', enabled: true }), mediaType: 'youtube' },
+                            }));
+                            setBannersLoaded(true);
+                          }}
+                          className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                            bannersConfig.vipBanner2?.mediaType === 'youtube'
+                              ? 'bg-red-600 text-white shadow'
+                              : 'text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          <Video className="w-3.5 h-3.5" />
+                          <span>Video YouTube</span>
+                        </button>
+                      </div>
+
+                      {/* Preview box */}
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <label className="text-xs font-bold text-slate-300">
+                            {bannersConfig.vipBanner2?.mediaType === 'youtube'
+                              ? 'Video YouTube (Xem trước):'
+                              : 'Hình ảnh hiển thị (Xem trước):'}
+                          </label>
+                          {bannersConfig.vipBanner2?.mediaType === 'youtube' ? (
+                            (() => {
+                              const info = getYouTubeEmbedInfo(bannersConfig.vipBanner2?.youtubeUrl);
+                              return info ? (
+                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/20 text-red-300 font-bold border border-red-500/30">
+                                  ✓ YouTube {info.isShorts ? 'Shorts' : 'Video'}
+                                </span>
+                              ) : null;
+                            })()
+                          ) : bannersConfig.vipBanner2?.imageUrl?.startsWith('data:') ? (
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
+                              ✓ Ảnh nén tối ưu sẵn sàng
+                            </span>
+                          ) : null}
+                        </div>
+
+                        <div className="relative group rounded-2xl overflow-hidden border-2 border-dashed border-slate-700 bg-[#0a0e1a] p-3 flex items-center justify-center min-h-[200px]">
+                          {bannersConfig.vipBanner2?.mediaType === 'youtube' ? (
+                            (() => {
+                              const info = getYouTubeEmbedInfo(bannersConfig.vipBanner2?.youtubeUrl);
+                              return info ? (
+                                <div className="w-full aspect-video rounded-xl overflow-hidden border border-slate-700 bg-black">
+                                  <iframe
+                                    src={info.embedUrl}
+                                    title="YouTube preview"
+                                    className="w-full h-full border-0"
+                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                    allowFullScreen
+                                  />
+                                </div>
+                              ) : (
+                                <div className="text-center text-slate-500 text-xs p-6 space-y-2">
+                                  <Video className="w-8 h-8 text-slate-600 mx-auto" />
+                                  <div>Chưa có video YouTube. Vui lòng dán link video vào ô bên dưới.</div>
+                                </div>
+                              );
+                            })()
+                          ) : bannerOptimizing.vip2 ? (
+                            <div className="flex flex-col items-center gap-2 py-10 text-cyan-400">
+                              <Loader2 className="w-8 h-8 animate-spin" />
+                              <span className="text-xs font-bold">Đang nén & tối ưu ảnh...</span>
+                            </div>
+                          ) : bannersConfig.vipBanner2?.imageUrl ? (
+                            <div className="relative w-full max-w-[360px] mx-auto">
+                              <img
+                                src={bannersConfig.vipBanner2.imageUrl}
+                                alt="Banner VIP 2"
+                                className="w-full h-auto aspect-[400/220] object-cover rounded-xl shadow-lg border border-slate-700"
+                                onError={(e) => {
+                                  (e.target as HTMLElement).style.display = 'none';
+                                }}
+                              />
+                              <div className="text-center text-[10px] text-slate-500 mt-2">
+                                Tỷ lệ khuyến nghị: 16:9 hoặc ~400 x 220px (Khung ngang)
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="text-center text-slate-500 text-xs py-8 space-y-1">
+                              <div className="font-semibold text-slate-400">Chưa có ảnh banner (Đang để trống)</div>
+                              <div className="text-[11px] text-slate-500">Nếu banner này để trống, hệ thống sẽ tự động chỉ hiện banner còn lại.</div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Inputs depending on Media Type */}
+                      {bannersConfig.vipBanner2?.mediaType === 'youtube' ? (
+                        <div className="space-y-1.5 pt-1">
+                          <label className="block text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                            <Video className="w-3.5 h-3.5 text-red-400" />
+                            <span>Dán link video YouTube (watch, shorts, embed, youtu.be):</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={bannersConfig.vipBanner2?.youtubeUrl || ''}
+                            onChange={(e) => {
+                              const val = e.target.value.trim();
+                              setBannersConfig((prev) => ({
+                                ...prev,
+                                vipBanner2: { ...(prev.vipBanner2 || { imageUrl: DEFAULT_VIP_BANNER_2_IMAGE, linkUrl: 'https://photobook.vn/bang-gia', enabled: true }), youtubeUrl: val, mediaType: 'youtube' },
+                              }));
+                              setBannersLoaded(true);
+                            }}
+                            placeholder="https://www.youtube.com/watch?v=... hoặc shorts"
+                            className="w-full px-3.5 py-2.5 rounded-xl bg-[#0a0e19] border border-slate-700 text-white text-xs placeholder-slate-500 outline-none focus:border-red-500 transition"
+                          />
+                        </div>
+                      ) : (
+                        <>
+                          <div className="flex items-center gap-2 pt-1 flex-wrap">
+                            <label className="flex-1 min-w-[170px] px-4 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs flex items-center justify-center gap-2 cursor-pointer shadow transition active:scale-98">
+                              <Upload className="w-4 h-4" />
+                              <span>Tải ảnh từ máy tính</span>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={(e) => handleBannerUpload('vip2', e)}
+                              />
+                            </label>
+
+                            <button
+                              type="button"
+                              onClick={() => handleResetSideBanner('vip2')}
+                              className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-semibold text-xs transition cursor-pointer border border-slate-700"
+                              title="Khôi phục ảnh mẫu ban đầu"
+                            >
+                              Khôi phục ảnh mẫu
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleClearBanner('vip2')}
+                              className="px-3 py-2.5 rounded-xl bg-slate-800 hover:bg-rose-950 text-slate-400 hover:text-rose-300 font-semibold text-xs transition cursor-pointer border border-slate-700 hover:border-rose-700/50"
+                              title="Xóa ảnh để trống banner này"
+                            >
+                              Xóa ảnh / Để trống
+                            </button>
+                          </div>
+
+                          <div className="space-y-1.5 pt-1">
+                            <label className="block text-xs font-bold text-slate-300">
+                              Hoặc nhập link URL ảnh trực tiếp (Tùy chọn):
+                            </label>
+                            <input
+                              type="text"
+                              value={bannersConfig.vipBanner2?.imageUrl?.startsWith('data:') ? '' : (bannersConfig.vipBanner2?.imageUrl || '')}
+                              onChange={(e) => {
+                                const val = e.target.value.trim();
+                                if (val) {
+                                  setBannersConfig((prev) => ({
+                                    ...prev,
+                                    vipBanner2: { ...(prev.vipBanner2 || { linkUrl: 'https://photobook.vn/bang-gia', enabled: true }), imageUrl: val, mediaType: 'image' },
+                                  }));
+                                  setBannersLoaded(true);
+                                }
+                              }}
+                              placeholder="https://... (Nếu có sẵn link ảnh online)"
+                              className="w-full px-3.5 py-2 rounded-xl bg-[#0a0e19] border border-slate-700 text-white text-xs placeholder-slate-500 outline-none focus:border-cyan-500 transition"
+                            />
+                          </div>
+                        </>
+                      )}
+
+                      {/* Destination URL */}
+                      <div className="space-y-1.5 pt-1">
+                        <label className="block text-xs font-bold text-slate-300">
+                          Link chuyển đến khi khách bấm vào ảnh (Tùy chọn):
+                        </label>
+                        <input
+                          type="text"
+                          value={bannersConfig.vipBanner2?.linkUrl || ''}
+                          onChange={(e) =>
+                            setBannersConfig((prev) => ({
+                              ...prev,
+                              vipBanner2: { ...(prev.vipBanner2 || { imageUrl: DEFAULT_VIP_BANNER_2_IMAGE, enabled: true }), linkUrl: e.target.value },
+                            }))
+                          }
+                          placeholder="https://photobook.vn/bang-gia..."
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-[#0a0e19] border border-slate-700 text-white text-xs placeholder-slate-500 outline-none focus:border-cyan-500 transition"
+                        />
+                        <p className="text-[11px] text-slate-500">
+                          * Nhập link bảng giá in ảnh hoặc hotline để khách liên hệ.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
 
               {/* Bottom Big Save Button Bar */}
               <div className="bg-[#121728] border border-slate-800/90 rounded-2xl p-4 flex items-center justify-between gap-4">
                 <span className="text-xs text-slate-400">
-                  Sau khi thay đổi hình ảnh hoặc link, hãy bấm <b>Lưu 2 Banner Ngay</b> để áp dụng cho toàn bộ người dùng.
+                  Sau khi thay đổi hình ảnh hoặc link, hãy bấm <b>Lưu Tất Cả Banner</b> để áp dụng ngay cho toàn bộ người dùng.
                 </span>
 
                 <button
@@ -2146,7 +2767,7 @@ export default function AdminDashboard({
                   ) : (
                     <Save className="w-4 h-4" />
                   )}
-                  <span>{bannersSaving ? 'Đang lưu cài đặt...' : 'LƯU 2 BANNER NGAY'}</span>
+                  <span>{bannersSaving ? 'Đang lưu cài đặt...' : 'LƯU TẤT CẢ BANNER'}</span>
                 </button>
               </div>
             </div>
