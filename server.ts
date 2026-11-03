@@ -1922,18 +1922,45 @@ CRITICAL RULES FOR REALISTIC WEDDING RETOUCHING (MANDATORY & ABSOLUTE):
 
       const existing = creditsStore.links[folderId];
       const nowIso = new Date().toISOString();
+
+      // IMPORTANT: Never allow a guest visit or anonymous count update to overwrite an existing real creator!
+      const hasNewRealCreator = Boolean(creatorUid && creatorUid !== "guest");
+      const existingHasRealCreator = Boolean(existing?.creatorUid && existing.creatorUid !== "guest");
+
+      const finalCreatorUid = hasNewRealCreator
+        ? creatorUid
+        : (existingHasRealCreator ? existing.creatorUid : (creatorUid || "guest"));
+
+      const finalCreatorEmail = hasNewRealCreator
+        ? (creatorEmail || existing?.creatorEmail || "Chưa đăng nhập")
+        : (existingHasRealCreator ? existing.creatorEmail : (creatorEmail || "Chưa đăng nhập"));
+
+      const finalCreatorName = hasNewRealCreator
+        ? (creatorName || existing?.creatorName || "Khách vãng lai")
+        : (existingHasRealCreator ? existing.creatorName : (creatorName || "Khách vãng lai"));
+
+      const finalCreatorRole = hasNewRealCreator
+        ? (creatorRole || existing?.creatorRole || "guest")
+        : (existingHasRealCreator ? existing.creatorRole : (creatorRole || "guest"));
+
+      const finalCreatorPhotoURL = hasNewRealCreator
+        ? (creatorPhotoURL || existing?.creatorPhotoURL || null)
+        : (existingHasRealCreator ? existing.creatorPhotoURL : (creatorPhotoURL || null));
+
       const record: StoredLinkRecord = {
         id: folderId,
         folderId,
         driveUrl: driveUrl || existing?.driveUrl || `https://drive.google.com/drive/folders/${folderId}`,
         shareUrl: shareUrl || existing?.shareUrl || `/?folder=${folderId}`,
         customTitle: typeof customTitle === "string" ? customTitle : existing?.customTitle,
-        creatorUid: creatorUid || existing?.creatorUid || "guest",
-        creatorEmail: creatorEmail || existing?.creatorEmail || "Chưa đăng nhập",
-        creatorName: creatorName || existing?.creatorName || "Khách vãng lai",
-        creatorRole: creatorRole || existing?.creatorRole || "guest",
-        creatorPhotoURL: creatorPhotoURL || existing?.creatorPhotoURL || null,
+        creatorUid: finalCreatorUid,
+        creatorEmail: finalCreatorEmail,
+        creatorName: finalCreatorName,
+        creatorRole: finalCreatorRole,
+        creatorPhotoURL: finalCreatorPhotoURL,
         photoCount: typeof photoCount === "number" ? photoCount : existing?.photoCount,
+        selectedCount: typeof req.body?.selectedCount === "number" ? req.body.selectedCount : existing?.selectedCount,
+        annotatedCount: typeof req.body?.annotatedCount === "number" ? req.body.annotatedCount : existing?.annotatedCount,
         createdAt: existing?.createdAt || nowIso,
         lastAccessedAt: nowIso,
       };
@@ -1944,13 +1971,39 @@ CRITICAL RULES FOR REALISTIC WEDDING RETOUCHING (MANDATORY & ABSOLUTE):
       const currentDb = getSafeDb();
       if (currentDb) {
         try {
-          await currentDb.collection("link_history").doc(folderId).set(
-            {
-              ...record,
-              updatedAt: FieldValue.serverTimestamp(),
-            },
-            { merge: true }
-          );
+          const docRef = currentDb.collection("link_history").doc(folderId);
+          const docSnap = await docRef.get();
+          const docData = docSnap.exists ? docSnap.data() : null;
+          const firestoreHasRealCreator = Boolean(docData?.creatorUid && docData.creatorUid !== "guest");
+
+          const updateData: Record<string, any> = {
+            id: folderId,
+            folderId,
+            driveUrl: record.driveUrl,
+            shareUrl: record.shareUrl,
+            lastAccessedAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+          };
+
+          if (record.customTitle !== undefined) updateData.customTitle = record.customTitle;
+          if (typeof record.photoCount === "number") updateData.photoCount = record.photoCount;
+          if (typeof record.selectedCount === "number") updateData.selectedCount = record.selectedCount;
+          if (typeof record.annotatedCount === "number") updateData.annotatedCount = record.annotatedCount;
+
+          // Only write creator fields if we have a real creator or if the doc never had one
+          if (hasNewRealCreator || !firestoreHasRealCreator) {
+            updateData.creatorUid = finalCreatorUid;
+            updateData.creatorEmail = finalCreatorEmail;
+            updateData.creatorName = finalCreatorName;
+            updateData.creatorRole = finalCreatorRole;
+            updateData.creatorPhotoURL = finalCreatorPhotoURL;
+          }
+
+          if (!docSnap.exists && !existing?.createdAt) {
+            updateData.createdAt = FieldValue.serverTimestamp();
+          }
+
+          await docRef.set(updateData, { merge: true });
         } catch (e) {
           console.warn("Could not save link record to Firestore Admin:", e);
         }

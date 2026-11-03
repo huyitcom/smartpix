@@ -25,7 +25,7 @@ import {
   ScanLine
 } from 'lucide-react';
 import type { DriveFile, StrokeAnnotation, AlbumAnnotations } from '../types';
-import { db, auth, UserProfile, signInWithGoogle, recordLinkCreation } from '../firebase';
+import { db, auth, UserProfile, signInWithGoogle, recordLinkCreation, updateLinkStats } from '../firebase';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import PhotoAnnotationCanvas from './PhotoAnnotationCanvas';
 import AuthModal from './AuthModal';
@@ -155,10 +155,8 @@ export default function Gallery({
         const fetchedList = dataFiles.files || [];
         setFiles(fetchedList);
 
-        // Record or update link creation history with total photo count
-        recordLinkCreation({
-          folderId,
-          creator: userProfile,
+        // Update link stats (photo count & last accessed) without altering the creator
+        updateLinkStats(folderId, {
           photoCount: fetchedList.length,
         });
 

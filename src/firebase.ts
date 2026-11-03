@@ -629,6 +629,49 @@ const saveLocalUserLinks = (uid: string, items: LinkHistoryItem[]) => {
   } catch {}
 };
 
+export const updateLinkStats = async (
+  folderId: string,
+  stats: {
+    photoCount?: number;
+    selectedCount?: number;
+    annotatedCount?: number;
+  }
+): Promise<void> => {
+  if (!folderId) return;
+  try {
+    // 1. Post stats update to server (does not touch creator)
+    fetch('/api/links/record', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        folderId,
+        photoCount: stats.photoCount,
+        selectedCount: stats.selectedCount,
+        annotatedCount: stats.annotatedCount,
+      }),
+    }).catch(() => {});
+
+    // 2. Direct Firestore update - ONLY updates counts and access time, NEVER changes creator
+    if (db) {
+      try {
+        const linkDocRef = doc(db, 'link_history', folderId);
+        const updateData: Record<string, any> = {
+          folderId,
+          lastAccessedAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        };
+        if (typeof stats.photoCount === 'number') updateData.photoCount = stats.photoCount;
+        if (typeof stats.selectedCount === 'number') updateData.selectedCount = stats.selectedCount;
+        if (typeof stats.annotatedCount === 'number') updateData.annotatedCount = stats.annotatedCount;
+
+        await setDoc(linkDocRef, updateData, { merge: true });
+      } catch (err) {
+        console.warn('Firestore updateLinkStats warning:', err);
+      }
+    }
+  } catch {}
+};
+
 export const recordLinkCreation = async (data: {
   folderId: string;
   driveUrl?: string;
@@ -640,30 +683,66 @@ export const recordLinkCreation = async (data: {
 }): Promise<void> => {
   if (!data.folderId) return;
   try {
-    const uid = data.creator?.uid || 'guest';
+    const hasRealCreator = Boolean(data.creator && data.creator.uid && data.creator.uid !== 'guest');
+    const uid = hasRealCreator ? data.creator!.uid : 'guest';
     const existingLocal = getLocalUserLinks(uid).find((i) => i.folderId === data.folderId);
+
+    // Check if Firestore already has a real creator for this link
+    let existingFirestoreData: any = null;
+    if (db) {
+      try {
+        const linkDocRef = doc(db, 'link_history', data.folderId);
+        const snap = await getDoc(linkDocRef);
+        if (snap.exists()) {
+          existingFirestoreData = snap.data();
+        }
+      } catch {}
+    }
+
+    const firestoreHasRealCreator = Boolean(
+      existingFirestoreData?.creatorUid && existingFirestoreData.creatorUid !== 'guest'
+    );
+
+    // If caller provided a real logged-in creator, use it. Otherwise, strictly preserve existing creator!
+    const finalUid = hasRealCreator
+      ? data.creator!.uid
+      : (firestoreHasRealCreator ? existingFirestoreData.creatorUid : (existingLocal?.creatorUid || 'guest'));
+    const finalEmail = hasRealCreator
+      ? (data.creator!.email || 'Chưa đăng nhập')
+      : (firestoreHasRealCreator ? existingFirestoreData.creatorEmail : (existingLocal?.creatorEmail || 'Chưa đăng nhập'));
+    const finalName = hasRealCreator
+      ? (data.creator!.displayName || data.creator!.email || 'Khách vãng lai')
+      : (firestoreHasRealCreator ? existingFirestoreData.creatorName : (existingLocal?.creatorName || 'Khách vãng lai'));
+    const finalRole = hasRealCreator
+      ? ((data.creator!.role as any) || 'user')
+      : (firestoreHasRealCreator ? existingFirestoreData.creatorRole : ((existingLocal?.creatorRole as any) || 'guest'));
+    const finalPhotoURL = hasRealCreator
+      ? (data.creator!.photoURL || null)
+      : (firestoreHasRealCreator ? existingFirestoreData.creatorPhotoURL : (existingLocal?.creatorPhotoURL || null));
 
     const payload: LinkHistoryItem = {
       id: data.folderId,
       folderId: data.folderId,
-      driveUrl: data.driveUrl || existingLocal?.driveUrl || `https://drive.google.com/drive/folders/${data.folderId}`,
+      driveUrl: data.driveUrl || existingFirestoreData?.driveUrl || existingLocal?.driveUrl || `https://drive.google.com/drive/folders/${data.folderId}`,
       shareUrl: typeof window !== 'undefined' ? `${window.location.origin}/?folder=${data.folderId}` : `/?folder=${data.folderId}`,
-      customTitle: data.customTitle ?? existingLocal?.customTitle,
-      creatorUid: uid,
-      creatorEmail: data.creator?.email || 'Chưa đăng nhập',
-      creatorName: data.creator?.displayName || data.creator?.email || 'Khách vãng lai',
-      creatorRole: (data.creator?.role as any) || 'guest',
-      creatorPhotoURL: data.creator?.photoURL || null,
-      photoCount: data.photoCount ?? existingLocal?.photoCount,
-      selectedCount: data.selectedCount ?? existingLocal?.selectedCount,
-      annotatedCount: data.annotatedCount ?? existingLocal?.annotatedCount,
-      createdAt: existingLocal?.createdAt || new Date().toISOString(),
+      customTitle: data.customTitle ?? existingFirestoreData?.customTitle ?? existingLocal?.customTitle,
+      creatorUid: finalUid,
+      creatorEmail: finalEmail,
+      creatorName: finalName,
+      creatorRole: finalRole,
+      creatorPhotoURL: finalPhotoURL,
+      photoCount: data.photoCount ?? existingFirestoreData?.photoCount ?? existingLocal?.photoCount,
+      selectedCount: data.selectedCount ?? existingFirestoreData?.selectedCount ?? existingLocal?.selectedCount,
+      annotatedCount: data.annotatedCount ?? existingFirestoreData?.annotatedCount ?? existingLocal?.annotatedCount,
+      createdAt: existingFirestoreData?.createdAtStr || existingLocal?.createdAt || new Date().toISOString(),
       lastAccessedAt: new Date().toISOString(),
     };
 
-    // 0. Save to local storage for instant member feedback
-    const currentLocal = getLocalUserLinks(uid).filter((i) => i.folderId !== data.folderId);
-    saveLocalUserLinks(uid, [payload, ...currentLocal]);
+    // 0. Save to local storage for the creator
+    if (hasRealCreator) {
+      const currentLocal = getLocalUserLinks(finalUid).filter((i) => i.folderId !== data.folderId);
+      saveLocalUserLinks(finalUid, [payload, ...currentLocal]);
+    }
 
     // 1. Post to backend server API
     try {
@@ -681,16 +760,31 @@ export const recordLinkCreation = async (data: {
       try {
         const linkDocRef = doc(db, 'link_history', data.folderId);
         const firestoreData: Record<string, any> = {
-          ...payload,
+          folderId: payload.folderId,
+          driveUrl: payload.driveUrl,
+          shareUrl: payload.shareUrl,
+          lastAccessedAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         };
-        if (!existingLocal?.createdAt) {
+
+        if (payload.customTitle !== undefined) firestoreData.customTitle = payload.customTitle;
+        if (payload.photoCount !== undefined) firestoreData.photoCount = payload.photoCount;
+        if (payload.selectedCount !== undefined) firestoreData.selectedCount = payload.selectedCount;
+        if (payload.annotatedCount !== undefined) firestoreData.annotatedCount = payload.annotatedCount;
+
+        // ONLY overwrite creator fields if we have a real creator OR if the document never had one
+        if (hasRealCreator || !firestoreHasRealCreator) {
+          firestoreData.creatorUid = payload.creatorUid;
+          firestoreData.creatorEmail = payload.creatorEmail;
+          firestoreData.creatorName = payload.creatorName;
+          firestoreData.creatorRole = payload.creatorRole;
+          firestoreData.creatorPhotoURL = payload.creatorPhotoURL;
+        }
+
+        if (!existingFirestoreData && !existingLocal?.createdAt) {
           firestoreData.createdAt = serverTimestamp();
         }
-        if (firestoreData.customTitle === undefined) delete firestoreData.customTitle;
-        if (firestoreData.photoCount === undefined) delete firestoreData.photoCount;
-        if (firestoreData.selectedCount === undefined) delete firestoreData.selectedCount;
-        if (firestoreData.annotatedCount === undefined) delete firestoreData.annotatedCount;
+
         await setDoc(linkDocRef, firestoreData, { merge: true });
       } catch (err) {
         console.warn('Firestore link_history save warning:', err);
