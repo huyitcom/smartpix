@@ -6,7 +6,7 @@ import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
 import { initializeApp, cert, getApps } from "firebase-admin/app";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 
 dotenv.config();
 
@@ -493,6 +493,163 @@ async function startServer() {
     }
 
     res.status(404).json({ error: "Retouched image not found" });
+  });
+
+  // API to scan handwritten photo selection lists via Gemini Vision (gemini-3.8-flash)
+  app.post("/api/ai/scan-handwritten-list", async (req, res) => {
+    try {
+      const { images = [], albumNumberHints = [] } = req.body || {};
+      const apiKey = process.env.GEMINI_API_KEY;
+
+      if (!apiKey) {
+        return res.status(500).json({
+          error: "GEMINI_API_KEY chưa được cấu hình trên máy chủ. Vui lòng kiểm tra mục Settings > Secrets.",
+        });
+      }
+
+      if (!Array.isArray(images) || images.length === 0) {
+        return res.status(400).json({
+          error: "Vui lòng tải lên ít nhất 1 ảnh chụp danh sách viết tay.",
+        });
+      }
+
+      const ai = new GoogleGenAI({
+        apiKey,
+        httpOptions: {
+          headers: {
+            "User-Agent": "aistudio-build",
+          },
+        },
+      });
+
+      const imageParts = images
+        .filter((img: any) => img && typeof img.base64 === "string")
+        .map((img: any) => {
+          const cleanBase64 = img.base64.replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, "");
+          return {
+            inlineData: {
+              mimeType: img.mimeType || "image/jpeg",
+              data: cleanBase64,
+            },
+          };
+        });
+
+      if (imageParts.length === 0) {
+        return res.status(400).json({
+          error: "Dữ liệu hình ảnh không hợp lệ.",
+        });
+      }
+
+      const hintContext =
+        Array.isArray(albumNumberHints) && albumNumberHints.length > 0
+          ? `\nTHÔNG TIN THAM CHIẾU TỪ ALBUM GOOGLE DRIVE HIỆN TẠI:\nCác mã số đuôi ảnh thực tế có trong album nằm trong tập hợp/khoảng sau (dùng để tham chiếu khi gặp chữ viết đè khó đọc): ${albumNumberHints.slice(0, 600).join(", ")}`
+          : "";
+
+      const prompt = `Bạn là trợ lý AI chuyên đọc danh sách mã số ảnh viết tay của khách hàng cho Studio ảnh cưới & sự kiện Photobook Vietnam.
+Hãy phân tích kỹ hình ảnh chụp trang giấy ghi danh sách mã số ảnh được chọn và trích xuất chính xác toàn bộ mã số ảnh hợp lệ.
+
+QUY TẮC BẮT BUỘC:
+1. ĐỌC THEO CỘT (TỪ TRÊN XUỐNG DƯỚI, TỪ TRÁI SANG PHẢI):
+   - Khách hàng thường viết danh sách mã ảnh (thường là 3 đến 5 chữ số cuối của tên file ảnh, ví dụ: 6025, 6038, 6042...) thành từng cột dọc từ trên xuống dưới. Hãy đọc lần lượt hết cột 1 rồi sang cột 2, cột 3... để giữ đúng thứ tự khách ghi.
+2. LOẠI BỎ CÁC SỐ BỊ GẠCH XÓA / GẠCH BỎ (CỰC KỲ QUAN TRỌNG):
+   - Những chỗ khách viết nhầm rồi gạch ngang, gạch chéo hoặc tô đen đè lên (scribbled out / crossed out) TUYỆT ĐỐI KHÔNG được đưa vào danh sách "validCodes".
+   - Nếu nhìn thấy vết gạch xóa, hãy bỏ qua không chọn, hoặc ghi nhận vào mảng "crossedOutCodes" để báo cáo.
+3. PHÂN BIỆT TỔNG SỐ LƯỢNG Ở ĐẦU TRANG VỚI MÃ ẢNH:
+   - Ở góc trên trang giấy (gần chữ No. / Date hoặc tiêu đề như "Tiệc Tối"), khách thường khoanh tròn tổng số lượng ảnh (ví dụ khoanh tròn số 188, hoặc gạch số 187 sửa thành 188). Đó là TỔNG SỐ LƯỢNG ẢNH khách đếm, KHÔNG PHẢI mã số ảnh! Hãy đưa con số tổng này vào trường "detectedTotalOnPage" và tiêu đề trang vào "pageNote".
+4. PHÁT HIỆN SỐ VIẾT ĐÈ / CHỮ KHÓ ĐỌC:
+   - Nếu có số nào bị viết đè sửa số (ví dụ viết số 5 đè lên số 3 thành 6363 hoặc 6365, hoặc 6605 bị đồ lại đậm), vẫn đưa phương án hợp lý nhất (ưu tiên khớp với danh sách mã có thực trong album nếu có thông tin tham chiếu) vào "validCodes", ĐỒNG THỜI liệt kê vào mảng "uncertainCodes" kèm phương án dự phòng ("alternative") và giải thích ngắn ("note") để studio kiểm tra nhanh.${hintContext}`;
+
+      const responseSchema = {
+        type: Type.OBJECT,
+        properties: {
+          validCodes: {
+            type: Type.ARRAY,
+            items: { type: Type.STRING },
+            description: "Danh sách các mã số ảnh hợp lệ theo thứ tự từng cột, đã loại bỏ các số bị gạch xóa và số tổng ở góc trang.",
+          },
+          crossedOutCodes: {
+            type: Type.ARRAY,
+            items: { type: Type.STRING },
+            description: "Danh sách các số hoặc vị trí bị khách gạch xóa/tô đen (nếu đọc được số bên dưới hoặc mô tả ngắn như 'Dưới 6154').",
+          },
+          uncertainCodes: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                code: { type: Type.STRING, description: "Mã số AI chọn làm phương án chính" },
+                alternative: { type: Type.STRING, description: "Mã số khả dĩ thứ 2 do viết đè hoặc chữ mờ" },
+                note: { type: Type.STRING, description: "Ghi chú ngắn, ví dụ: 'Số cuối viết đè giữa 3 và 5'" },
+              },
+            },
+            description: "Các mã số bị viết đè, tẩy xóa hoặc chữ viết tay dễ gây nhầm lẫn cần người dùng xác nhận lại.",
+          },
+          detectedTotalOnPage: {
+            type: Type.INTEGER,
+            description: "Con số tổng số lượng ảnh mà khách ghi/khoanh tròn ở góc trên trang giấy (nếu có, nếu không có trả về 0).",
+          },
+          pageNote: {
+            type: Type.STRING,
+            description: "Tiêu đề hoặc ghi chú trên trang giấy (ví dụ: 'Tiệc Tối').",
+          },
+        },
+        required: ["validCodes", "crossedOutCodes", "uncertainCodes"],
+      };
+
+      let response;
+      try {
+        response = await ai.models.generateContent({
+          model: "gemini-3.8-flash",
+          contents: {
+            parts: [...imageParts, { text: prompt }],
+          },
+          config: {
+            responseMimeType: "application/json",
+            responseSchema,
+          },
+        });
+      } catch (firstErr: any) {
+        console.warn("[AI Scan Handwritten] gemini-3.8-flash failed, trying gemini-flash-latest:", firstErr?.message);
+        response = await ai.models.generateContent({
+          model: "gemini-flash-latest",
+          contents: {
+            parts: [...imageParts, { text: prompt }],
+          },
+          config: {
+            responseMimeType: "application/json",
+            responseSchema,
+          },
+        });
+      }
+
+      const rawText = (response.text ?? "{}").trim();
+      let parsed: any = {};
+      try {
+        parsed = JSON.parse(rawText);
+      } catch {
+        const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          parsed = JSON.parse(jsonMatch[0]);
+        }
+      }
+
+      res.json({
+        success: true,
+        validCodes: Array.isArray(parsed.validCodes) ? parsed.validCodes : [],
+        crossedOutCodes: Array.isArray(parsed.crossedOutCodes) ? parsed.crossedOutCodes : [],
+        uncertainCodes: Array.isArray(parsed.uncertainCodes) ? parsed.uncertainCodes : [],
+        detectedTotalOnPage:
+          typeof parsed.detectedTotalOnPage === "number" && parsed.detectedTotalOnPage > 0
+            ? parsed.detectedTotalOnPage
+            : null,
+        pageNote: parsed.pageNote || "",
+      });
+    } catch (error: any) {
+      console.error("[AI Scan Handwritten Error]:", error);
+      res.status(500).json({
+        error: error.message || "Không thể đọc danh sách ảnh viết tay. Vui lòng thử lại.",
+      });
+    }
   });
 
   // API to run AI photo retouching via Gemini API using server-side GEMINI_API_KEY
@@ -1878,9 +2035,25 @@ CRITICAL RULES FOR REALISTIC WEDDING RETOUCHING (MANDATORY & ABSOLUTE):
         }
       }
 
-      const allLinks = Object.values(creditsStore.links || {}).sort(
-        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      );
+      const allLinks = Object.values(creditsStore.links || {})
+        .map((link) => {
+          const albumData = localAlbumsStore[link.folderId] || loadAlbumFromDisk(link.folderId);
+          const selectedCount = Array.isArray(albumData?.selectedIds)
+            ? albumData.selectedIds.length
+            : 0;
+          const annotatedCount =
+            albumData?.annotations && typeof albumData.annotations === "object"
+              ? Object.values(albumData.annotations).filter(
+                  (arr: any) => Array.isArray(arr) && arr.length > 0
+                ).length
+              : 0;
+          return {
+            ...link,
+            selectedCount,
+            annotatedCount,
+          };
+        })
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       res.json({ success: true, links: allLinks });
     } catch (err: any) {
       res.status(500).json({ error: err.message || "Lỗi tải danh sách link" });

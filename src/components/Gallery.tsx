@@ -21,14 +21,16 @@ import {
   LogIn,
   QrCode,
   Shield,
-  ExternalLink
+  ExternalLink,
+  ScanLine
 } from 'lucide-react';
 import type { DriveFile, StrokeAnnotation, AlbumAnnotations } from '../types';
 import { db, auth, UserProfile, signInWithGoogle, recordLinkCreation } from '../firebase';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import PhotoAnnotationCanvas from './PhotoAnnotationCanvas';
 import AuthModal from './AuthModal';
 import UserProfileModal from './UserProfileModal';
+import HandwrittenScannerModal from './HandwrittenScannerModal';
 
 export default function Gallery({ 
   folderId, 
@@ -65,6 +67,7 @@ export default function Gallery({
   const [isDrawingMode, setIsDrawingMode] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [showHandwrittenModal, setShowHandwrittenModal] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
 
   const handleDirectGoogleLogin = async () => {
@@ -207,8 +210,24 @@ export default function Gallery({
           if (db) {
             try {
               const albumDocRef = doc(db, 'albums', folderId);
-              // Read from Firestore to sync any real-time changes
-              // Non-blocking
+              const albumSnap = await getDoc(albumDocRef);
+              if (albumSnap.exists()) {
+                const fData = albumSnap.data() || {};
+                const fSelected = Array.isArray(fData.selectedIds) ? fData.selectedIds : [];
+                const fAnnotations = fData.annotations && typeof fData.annotations === 'object' ? fData.annotations : {};
+                if (fSelected.length > 0 || Object.keys(fAnnotations).length > 0) {
+                  mergedSelected = Array.from(new Set([...mergedSelected, ...fSelected]));
+                  mergedAnnotations = { ...mergedAnnotations, ...fAnnotations };
+                  setSelectedIds(new Set(mergedSelected));
+                  setAnnotations(mergedAnnotations);
+                  setSyncStatus('saved');
+                  saveToLocalBackup({
+                    selectedIds: mergedSelected,
+                    annotations: mergedAnnotations,
+                    retouched: mergedRetouched,
+                  });
+                }
+              }
             } catch (e) {}
           }
         } else {
@@ -239,6 +258,16 @@ export default function Gallery({
     });
   };
 
+  const handleApplyHandwrittenSelections = (newSet: Set<string>) => {
+    setSelectedIds(newSet);
+    const arr = Array.from(newSet);
+    saveToLocalBackup({ selectedIds: arr });
+    saveToDatabase(newSet);
+    if (newSet.size > 0) {
+      setFilterMode('selected');
+    }
+  };
+
   const saveToDatabase = async (newSet: Set<string>) => {
     setSyncStatus('saving');
     const arr = Array.from(newSet);
@@ -257,12 +286,18 @@ export default function Gallery({
       }
       setSyncStatus('saved');
 
-      // 2. Direct Firestore Client Sync (Tier 3 - when authenticated with Firebase Auth)
-      if (db && auth?.currentUser) {
+      // 2. Direct Firestore Client Sync (works for both customers and studio owners)
+      if (db) {
         try {
           const albumRef = doc(db, 'albums', folderId);
           await setDoc(albumRef, {
             selectedIds: arr,
+            updatedAtMs: Date.now(),
+            updatedAt: serverTimestamp()
+          }, { merge: true });
+          const linkRef = doc(db, 'link_history', folderId);
+          await setDoc(linkRef, {
+            selectedCount: arr.length,
             updatedAt: serverTimestamp()
           }, { merge: true });
         } catch {
@@ -307,12 +342,21 @@ export default function Gallery({
         setSyncStatus('error');
       }
 
-      // 3. Direct Firestore Client Sync (Tier 3 - when authenticated with Firebase Auth)
-      if (db && auth?.currentUser) {
+      // 3. Direct Firestore Client Sync (works for both customers and studio owners)
+      if (db) {
         try {
+          const annotatedCount = Object.values(nextState).filter(
+            (items) => Array.isArray(items) && items.length > 0
+          ).length;
           const albumRef = doc(db, 'albums', folderId);
           await setDoc(albumRef, {
             annotations: nextState,
+            updatedAtMs: Date.now(),
+            updatedAt: serverTimestamp()
+          }, { merge: true });
+          const linkRef = doc(db, 'link_history', folderId);
+          await setDoc(linkRef, {
+            annotatedCount,
             updatedAt: serverTimestamp()
           }, { merge: true });
         } catch {
@@ -731,7 +775,7 @@ export default function Gallery({
           )}
         </div>
 
-        <div className="flex items-center">
+        <div className="flex items-center gap-2.5 flex-wrap justify-center">
           <select
             value={sortMode}
             onChange={(e) => setSortMode(e.target.value as any)}
@@ -742,6 +786,20 @@ export default function Gallery({
             <option value="date-desc">Mới nhất</option>
             <option value="date-asc">Cũ nhất</option>
           </select>
+
+          <button
+            type="button"
+            onClick={() => setShowHandwrittenModal(true)}
+            className="px-4 py-2.5 rounded-full text-xs md:text-sm font-black bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white shadow-md hover:shadow-lg flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
+            title="Quét danh sách mã ảnh viết tay bằng AI và tự động chọn ảnh (Chỉ dành cho VIP)"
+          >
+            <ScanLine className="w-4 h-4 text-white" />
+            <span>Quét DS viết tay</span>
+            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-white/25 text-[10px] font-black uppercase tracking-wider">
+              <Crown className="w-2.5 h-2.5 text-amber-200" />
+              VIP
+            </span>
+          </button>
         </div>
       </div>
 
@@ -1123,6 +1181,19 @@ export default function Gallery({
         onOpenAuthModal={() => setShowAuthModal(true)}
         onOpenTopupModal={onOpenTopupModal}
         onOpenAdmin={onOpenAdmin}
+      />
+
+      {/* AI Handwritten Photo List Scanner Modal (VIP Only) */}
+      <HandwrittenScannerModal
+        isOpen={showHandwrittenModal}
+        onClose={() => setShowHandwrittenModal(false)}
+        files={files}
+        selectedIds={selectedIds}
+        onApplySelections={handleApplyHandwrittenSelections}
+        userProfile={userProfile}
+        setUserProfile={setUserProfile}
+        onOpenAuthModal={() => setShowAuthModal(true)}
+        onOpenTopupModal={onOpenTopupModal}
       />
     </div>
   );

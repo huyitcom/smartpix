@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { LogIn, PhoneCall, Sparkles, X, ArrowLeft, Crown, KeyRound, CheckCircle2, AlertCircle, ExternalLink } from 'lucide-react';
-import { UserProfile, signInWithGoogle, markTrialAsUsed, validateAccessCode } from '../firebase';
+import { LogIn, PhoneCall, Sparkles, X, ArrowLeft, Crown, ExternalLink } from 'lucide-react';
+import { UserProfile, signInWithGoogle, markTrialAsUsed } from '../firebase';
 import { BannersConfig } from '../types';
 import { fetchBannersConfig, DEFAULT_BANNERS_CONFIG, DEFAULT_VIP_BANNER_1_IMAGE, DEFAULT_VIP_BANNER_2_IMAGE } from '../services/bannerService';
 import { getYouTubeEmbedInfo } from '../utils/youtubeHelper';
@@ -26,8 +26,6 @@ export default function VIPAccessModal({
   const [currentStep, setCurrentStep] = useState<VIPModalStep>(step);
   const [authLoading, setAuthLoading] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
-  const [vipCodeInput, setVipCodeInput] = useState('');
-  const [codeFeedback, setCodeFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [bannersConfig, setBannersConfig] = useState<BannersConfig>(DEFAULT_BANNERS_CONFIG);
 
   // Load banners configuration and sync with updates
@@ -43,8 +41,6 @@ export default function VIPAccessModal({
   // Synchronize internal state when prop changes
   React.useEffect(() => {
     setCurrentStep(step);
-    setCodeFeedback(null);
-    setVipCodeInput('');
   }, [step]);
 
   if (currentStep === 'closed' && !showAuthModal) return null;
@@ -66,38 +62,6 @@ export default function VIPAccessModal({
     }
     onGrantAccess();
     onClose();
-  };
-
-  const handleQuickVipActivation = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!vipCodeInput.trim()) return;
-
-    const check = validateAccessCode(vipCodeInput.trim());
-    if (check.valid && check.role) {
-      const updated: UserProfile = {
-        uid: userProfile?.uid || 'vip_' + Date.now().toString(36),
-        email: userProfile?.email || 'vip@photobook.vn',
-        displayName: userProfile?.displayName || 'Thành viên VIP Photobook',
-        photoURL: userProfile?.photoURL || null,
-        role: check.role,
-        vipActivatedAt: new Date().toISOString(),
-        vipCodeUsed: vipCodeInput.trim().toUpperCase()
-      };
-      setUserProfile(updated);
-      setCodeFeedback({
-        type: 'success',
-        message: 'Kích hoạt VIP thành công! Đang mở tính năng...'
-      });
-      setTimeout(() => {
-        onGrantAccess();
-        onClose();
-      }, 700);
-    } else {
-      setCodeFeedback({
-        type: 'error',
-        message: check.message
-      });
-    }
   };
 
   // Check active banners for new customer popup
@@ -223,40 +187,9 @@ export default function VIPAccessModal({
                   Chức năng chỉ áp dụng cho khách hàng của Photobook Vietnam
                 </h3>
 
-                <p className="text-xs sm:text-sm text-slate-500 mb-5">
+                <p className="text-xs sm:text-sm text-slate-500 mb-5 text-center">
                   Bạn đã từng là khách hàng đặt in tại Photobook Vietnam chưa?
                 </p>
-
-                {/* VIP Code Direct input */}
-                <form onSubmit={handleQuickVipActivation} className="w-full mb-4 bg-amber-50/70 border border-amber-300 rounded-2xl p-3 text-left">
-                  <div className="flex items-center gap-1.5 text-xs font-bold text-amber-800 mb-1">
-                    <KeyRound className="w-3.5 h-3.5 text-amber-500" />
-                    <span>Đã có mã kích hoạt VIP?</span>
-                  </div>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={vipCodeInput}
-                      onChange={(e) => setVipCodeInput(e.target.value)}
-                      placeholder="Mã: PHOTOBOOKVIP..."
-                      className="flex-1 px-3 py-1.5 bg-white border border-amber-300 rounded-xl text-xs font-bold uppercase outline-none focus:border-amber-500"
-                    />
-                    <button
-                      type="submit"
-                      className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl text-xs shadow-xs cursor-pointer"
-                    >
-                      Kích hoạt
-                    </button>
-                  </div>
-                  {codeFeedback && (
-                    <div className={`mt-2 text-[11px] font-bold flex items-center gap-1.5 ${
-                      codeFeedback.type === 'success' ? 'text-emerald-700' : 'text-red-600'
-                    }`}>
-                      {codeFeedback.type === 'success' ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> : <AlertCircle className="w-3.5 h-3.5 text-red-500" />}
-                      <span>{codeFeedback.message}</span>
-                    </div>
-                  )}
-                </form>
 
                 <div className="flex flex-col gap-2.5 w-full">
                   <button
@@ -293,61 +226,30 @@ export default function VIPAccessModal({
                   <PhoneCall className="w-7 h-7 stroke-[2.2]" />
                 </div>
 
-                <h3 className="text-lg sm:text-xl font-bold text-slate-800 mb-3">
-                  Khách hàng Photobook Vietnam
+                <h3 className="text-lg sm:text-xl font-bold text-slate-800 mb-2 text-center">
+                  Kích hoạt VIP cho Khách hàng
                 </h3>
 
-                <p className="text-sm sm:text-base text-slate-600 leading-relaxed mb-4 font-medium">
-                  Nếu đang là khách hàng của Photobook Vietnam, hãy liên hệ chúng tôi để được nâng lên VIP và tải file không giới hạn (hotline <span className="font-bold text-sky-600">0938023079</span>)
+                <p className="text-xs sm:text-sm text-slate-600 leading-relaxed mb-5 text-center font-medium">
+                  Chức năng VIP chỉ dành cho khách hàng đã đặt đơn in tại Photobook Vietnam. Quý khách vui lòng liên hệ Admin qua Hotline hoặc Zalo để được kiểm tra thông tin đơn hàng và kích hoạt tài khoản VIP ngay!
                 </p>
 
-                {/* VIP Code Direct input */}
-                <form onSubmit={handleQuickVipActivation} className="w-full mb-4 bg-amber-50/70 border border-amber-300 rounded-2xl p-3 text-left">
-                  <div className="flex items-center gap-1.5 text-xs font-bold text-amber-800 mb-1">
-                    <KeyRound className="w-3.5 h-3.5 text-amber-500" />
-                    <span>Nhập mã kích hoạt VIP được cấp:</span>
-                  </div>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={vipCodeInput}
-                      onChange={(e) => setVipCodeInput(e.target.value)}
-                      placeholder="Mã: PHOTOBOOKVIP..."
-                      className="flex-1 px-3 py-1.5 bg-white border border-amber-300 rounded-xl text-xs font-bold uppercase outline-none focus:border-amber-500"
-                    />
-                    <button
-                      type="submit"
-                      className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl text-xs shadow-xs cursor-pointer"
-                    >
-                      Kích hoạt
-                    </button>
-                  </div>
-                  {codeFeedback && (
-                    <div className={`mt-2 text-[11px] font-bold flex items-center gap-1.5 ${
-                      codeFeedback.type === 'success' ? 'text-emerald-700' : 'text-red-600'
-                    }`}>
-                      {codeFeedback.type === 'success' ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> : <AlertCircle className="w-3.5 h-3.5 text-red-500" />}
-                      <span>{codeFeedback.message}</span>
-                    </div>
-                  )}
-                </form>
-
                 <div className="flex flex-col gap-2.5 w-full">
-                  <a
-                    href="tel:0938023079"
-                    className="w-full py-3 px-6 rounded-2xl bg-sky-500 hover:bg-sky-600 text-white font-bold flex items-center justify-center gap-2 shadow-md transition-all text-sm active:scale-[0.99]"
-                  >
-                    <PhoneCall className="w-4 h-4" />
-                    <span>Gọi Hotline (0938023079)</span>
-                  </a>
-
                   <a
                     href="https://zalo.me/0938023079"
                     target="_blank"
                     rel="noopener noreferrer"
+                    className="w-full py-3 px-6 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-bold flex items-center justify-center gap-2 shadow-md transition-all text-sm active:scale-[0.99]"
+                  >
+                    <PhoneCall className="w-4 h-4" />
+                    <span>Liên hệ Admin để được kích hoạt VIP</span>
+                  </a>
+
+                  <a
+                    href="tel:0938023079"
                     className="w-full py-2.5 px-4 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-600 font-bold text-xs flex items-center justify-center gap-1.5 transition"
                   >
-                    Nhắn tin Zalo (0938023079)
+                    <span>Hotline hỗ trợ: 0938023079</span>
                   </a>
 
                   <div className="flex items-center gap-3 mt-1 w-full">

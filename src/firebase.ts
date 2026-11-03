@@ -477,9 +477,116 @@ export interface LinkHistoryItem {
   creatorPhotoURL?: string | null;
   creatorRole: 'admin' | 'vip' | 'user' | 'guest';
   photoCount?: number;
+  selectedCount?: number;
+  annotatedCount?: number;
   createdAt: string;
   lastAccessedAt?: string;
 }
+
+const countAnnotatedFiles = (annotations: any): number => {
+  if (!annotations || typeof annotations !== 'object') return 0;
+  return Object.values(annotations).filter(
+    (arr: any) => Array.isArray(arr) && arr.length > 0
+  ).length;
+};
+
+export const fetchFolderSelectionStats = async (
+  folderId: string
+): Promise<{ selectedCount: number; annotatedCount: number }> => {
+  let bestSelectedIds: string[] = [];
+  let bestAnnotations: Record<string, any> = {};
+  let bestUpdatedAt = 0;
+  let foundRemoteAuthoritative = false;
+
+  // 1. Check Server API (/api/albums/:folderId/selections)
+  try {
+    const res = await fetch(`/api/albums/${encodeURIComponent(folderId)}/selections?t=${Date.now()}`, {
+      cache: 'no-store',
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const sIds = Array.isArray(data?.selectedIds) ? data.selectedIds : [];
+      const ann = data?.annotations && typeof data.annotations === 'object' ? data.annotations : {};
+      if (sIds.length > 0 || Object.keys(ann).length > 0) {
+        bestSelectedIds = sIds;
+        bestAnnotations = ann;
+        foundRemoteAuthoritative = true;
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  // 2. Check Client Firestore 'albums/{folderId}' directly
+  if (db) {
+    try {
+      const albumSnap = await getDoc(doc(db, 'albums', folderId));
+      if (albumSnap.exists()) {
+        const d = albumSnap.data() || {};
+        const fIds = Array.isArray(d.selectedIds) ? d.selectedIds : [];
+        const fAnn = d.annotations && typeof d.annotations === 'object' ? d.annotations : {};
+        const fTime =
+          typeof d.updatedAtMs === 'number'
+            ? d.updatedAtMs
+            : d.updatedAt?.toMillis
+            ? d.updatedAt.toMillis()
+            : 0;
+        if (fTime >= bestUpdatedAt && (fIds.length > 0 || Object.keys(fAnn).length > 0 || !foundRemoteAuthoritative)) {
+          bestSelectedIds = fIds.length >= bestSelectedIds.length ? fIds : Array.from(new Set([...bestSelectedIds, ...fIds]));
+          bestAnnotations = { ...bestAnnotations, ...fAnn };
+          bestUpdatedAt = fTime;
+          foundRemoteAuthoritative = true;
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // 3. Also check local browser cache (photobook_album_{folderId})
+  try {
+    const cachedStr = localStorage.getItem(`photobook_album_${folderId}`);
+    if (cachedStr) {
+      const cached = JSON.parse(cachedStr);
+      const lIds = Array.isArray(cached?.selectedIds) ? cached.selectedIds : [];
+      const lAnn = cached?.annotations && typeof cached.annotations === 'object' ? cached.annotations : {};
+      const lTime = typeof cached?.updatedAt === 'number' ? cached.updatedAt : 0;
+
+      if (!foundRemoteAuthoritative || lTime > bestUpdatedAt) {
+        bestSelectedIds = Array.from(new Set([...bestSelectedIds, ...lIds]));
+        bestAnnotations = { ...bestAnnotations, ...lAnn };
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  return {
+    selectedCount: bestSelectedIds.length,
+    annotatedCount: countAnnotatedFiles(bestAnnotations),
+  };
+};
+
+export const enrichLinksWithSelectionStats = async (
+  items: LinkHistoryItem[]
+): Promise<LinkHistoryItem[]> => {
+  if (!items || items.length === 0) return items;
+  const enriched = await Promise.all(
+    items.map(async (item) => {
+      try {
+        const stats = await fetchFolderSelectionStats(item.folderId);
+        return {
+          ...item,
+          selectedCount: stats.selectedCount,
+          annotatedCount: stats.annotatedCount,
+        };
+      } catch {
+        return item;
+      }
+    })
+  );
+  return enriched;
+};
 
 const GUEST_CREATE_COUNT_KEY = 'smartpix_guest_create_count_v1';
 const USER_LINKS_LOCAL_PREFIX = 'smartpix_user_links_v1_';
@@ -528,6 +635,8 @@ export const recordLinkCreation = async (data: {
   customTitle?: string;
   creator?: UserProfile | null;
   photoCount?: number;
+  selectedCount?: number;
+  annotatedCount?: number;
 }): Promise<void> => {
   if (!data.folderId) return;
   try {
@@ -546,6 +655,8 @@ export const recordLinkCreation = async (data: {
       creatorRole: (data.creator?.role as any) || 'guest',
       creatorPhotoURL: data.creator?.photoURL || null,
       photoCount: data.photoCount ?? existingLocal?.photoCount,
+      selectedCount: data.selectedCount ?? existingLocal?.selectedCount,
+      annotatedCount: data.annotatedCount ?? existingLocal?.annotatedCount,
       createdAt: existingLocal?.createdAt || new Date().toISOString(),
       lastAccessedAt: new Date().toISOString(),
     };
@@ -578,6 +689,8 @@ export const recordLinkCreation = async (data: {
         }
         if (firestoreData.customTitle === undefined) delete firestoreData.customTitle;
         if (firestoreData.photoCount === undefined) delete firestoreData.photoCount;
+        if (firestoreData.selectedCount === undefined) delete firestoreData.selectedCount;
+        if (firestoreData.annotatedCount === undefined) delete firestoreData.annotatedCount;
         await setDoc(linkDocRef, firestoreData, { merge: true });
       } catch (err) {
         console.warn('Firestore link_history save warning:', err);
@@ -622,6 +735,8 @@ export const fetchAllLinkHistory = async (): Promise<LinkHistoryItem[]> => {
           creatorRole: d.creatorRole || 'guest',
           creatorPhotoURL: d.creatorPhotoURL || null,
           photoCount: typeof d.photoCount === 'number' ? d.photoCount : undefined,
+          selectedCount: typeof d.selectedCount === 'number' ? d.selectedCount : undefined,
+          annotatedCount: typeof d.annotatedCount === 'number' ? d.annotatedCount : undefined,
           createdAt: createdAtStr,
           lastAccessedAt: lastAccessedAtStr,
         });
@@ -647,6 +762,8 @@ export const fetchAllLinkHistory = async (): Promise<LinkHistoryItem[]> => {
               ...l,
               customTitle: l.customTitle || existing?.customTitle,
               photoCount: l.photoCount ?? existing?.photoCount,
+              selectedCount: l.selectedCount ?? existing?.selectedCount,
+              annotatedCount: l.annotatedCount ?? existing?.annotatedCount,
             });
           }
         }
@@ -664,9 +781,10 @@ export const fetchAllLinkHistory = async (): Promise<LinkHistoryItem[]> => {
 
 export const fetchUserLinkHistory = async (user: UserProfile | null): Promise<LinkHistoryItem[]> => {
   if (!user) {
-    return getLocalUserLinks('guest').sort(
+    const guestList = getLocalUserLinks('guest').sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
+    return enrichLinksWithSelectionStats(guestList);
   }
 
   const guestItems = getLocalUserLinks('guest').map((item) => ({
@@ -711,16 +829,19 @@ export const fetchUserLinkHistory = async (user: UserProfile | null): Promise<Li
         ...item,
         customTitle: item.customTitle || existing.customTitle,
         photoCount: item.photoCount ?? existing.photoCount,
+        selectedCount: item.selectedCount ?? existing.selectedCount,
+        annotatedCount: item.annotatedCount ?? existing.annotatedCount,
       });
     }
   }
 
-  const finalItems = Array.from(mergedMap.values()).sort(
+  const sortedItems = Array.from(mergedMap.values()).sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
 
-  saveLocalUserLinks(user.uid, finalItems);
-  return finalItems;
+  const enrichedItems = await enrichLinksWithSelectionStats(sortedItems);
+  saveLocalUserLinks(user.uid, enrichedItems);
+  return enrichedItems;
 };
 
 export const updateLinkCustomTitle = async (

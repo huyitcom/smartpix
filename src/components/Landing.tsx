@@ -19,6 +19,8 @@ import {
   X,
   Tag,
   Sparkles,
+  Heart,
+  PenTool,
 } from 'lucide-react';
 import {
   logOut,
@@ -593,6 +595,9 @@ export default function Landing({
               {filteredMyLinks.map((item) => {
                 const isEditing = editingFolderId === item.folderId;
                 const isCopied = copiedFolderId === item.folderId;
+                const selectedCount = item.selectedCount ?? 0;
+                const annotatedCount = item.annotatedCount ?? 0;
+                const hasCustomerSelection = selectedCount > 0 || annotatedCount > 0;
                 const formattedDate = (() => {
                   try {
                     return new Date(item.createdAt).toLocaleString('vi-VN', {
@@ -667,6 +672,60 @@ export default function Landing({
                             ID: {item.folderId.slice(0, 14)}...
                           </span>
                         </div>
+
+                        {/* Customer selection status, selected photo count & annotated photo count */}
+                        <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                          <span
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold border ${
+                              hasCustomerSelection
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                : 'bg-slate-100 text-slate-500 border-slate-200'
+                            }`}
+                          >
+                            <span
+                              className={`w-1.5 h-1.5 rounded-full ${
+                                hasCustomerSelection ? 'bg-emerald-500' : 'bg-slate-400'
+                              }`}
+                            />
+                            {hasCustomerSelection ? 'Khách đã chọn ảnh' : 'Chưa chọn ảnh'}
+                          </span>
+
+                          <span
+                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold border ${
+                              selectedCount > 0
+                                ? 'bg-rose-50 text-rose-600 border-rose-200'
+                                : 'bg-white text-slate-500 border-slate-200'
+                            }`}
+                            title="Số lượng ảnh khách đã chọn"
+                          >
+                            <Heart
+                              className={`w-3 h-3 ${
+                                selectedCount > 0 ? 'fill-rose-500 text-rose-500' : 'text-slate-400'
+                              }`}
+                            />
+                            <span>
+                              Đã chọn: <strong className="font-black">{selectedCount}</strong> ảnh
+                            </span>
+                          </span>
+
+                          <span
+                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold border ${
+                              annotatedCount > 0
+                                ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                : 'bg-white text-slate-500 border-slate-200'
+                            }`}
+                            title="Số lượng ảnh khách đã khoanh vùng & ghi chú"
+                          >
+                            <PenTool
+                              className={`w-3 h-3 ${
+                                annotatedCount > 0 ? 'text-amber-600' : 'text-slate-400'
+                              }`}
+                            />
+                            <span>
+                              Ghi chú: <strong className="font-black">{annotatedCount}</strong> ảnh
+                            </span>
+                          </span>
+                        </div>
                       </div>
 
                       <button
@@ -681,35 +740,31 @@ export default function Landing({
                     </div>
 
                     {/* Action buttons row */}
-                    <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-200/60">
+                    <div className="flex items-center gap-2 pt-1.5 border-t border-slate-200/60">
                       <button
                         type="button"
                         onClick={() => onStart(item.folderId)}
-                        className="flex-1 min-w-[130px] py-1.5 px-3 bg-sky-500 hover:bg-sky-600 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-2xs transition cursor-pointer"
+                        className="flex-1 min-w-[110px] h-9 px-3.5 bg-sky-500 hover:bg-sky-600 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-2xs transition cursor-pointer"
                       >
                         <FolderOpen className="w-3.5 h-3.5" />
-                        <span>Mở trang chọn ảnh</span>
+                        <span>Mở link</span>
                       </button>
 
                       <button
                         type="button"
                         onClick={() => handleCopyShareLink(item.folderId)}
-                        className={`py-1.5 px-3 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 border transition cursor-pointer ${
+                        title={isCopied ? 'Đã copy link gửi khách!' : 'Copy link gửi khách'}
+                        aria-label="Copy link gửi khách"
+                        className={`w-9 h-9 rounded-xl flex items-center justify-center border transition cursor-pointer shrink-0 ${
                           isCopied
-                            ? 'bg-emerald-50 border-emerald-300 text-emerald-700'
-                            : 'bg-white hover:bg-slate-100 border-slate-200 text-slate-700'
+                            ? 'bg-emerald-50 border-emerald-300 text-emerald-600'
+                            : 'bg-white hover:bg-slate-100 border-slate-200 text-slate-600 hover:text-sky-600'
                         }`}
                       >
                         {isCopied ? (
-                          <>
-                            <Check className="w-3.5 h-3.5 text-emerald-600" />
-                            <span>Đã copy link!</span>
-                          </>
+                          <Check className="w-4 h-4 text-emerald-600" />
                         ) : (
-                          <>
-                            <Copy className="w-3.5 h-3.5 text-slate-500" />
-                            <span>Copy link gửi khách</span>
-                          </>
+                          <Copy className="w-4 h-4" />
                         )}
                       </button>
 
@@ -717,11 +772,18 @@ export default function Landing({
                         href={item.driveUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="py-1.5 px-2.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 hover:text-sky-600 font-bold text-xs rounded-xl flex items-center gap-1 transition"
+                        className="w-9 h-9 bg-white hover:bg-slate-100 border border-slate-200 rounded-xl flex items-center justify-center transition shrink-0"
                         title="Mở thư mục Google Drive gốc"
+                        aria-label="Mở thư mục Google Drive gốc"
                       >
-                        <ExternalLink className="w-3.5 h-3.5" />
-                        <span>Drive gốc</span>
+                        <svg className="w-4 h-4" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg">
+                          <path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da" />
+                          <path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0 -1.2 4.5h27.5z" fill="#00ac47" />
+                          <path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z" fill="#ea4335" />
+                          <path d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d" />
+                          <path d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc" />
+                          <path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 28h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00" />
+                        </svg>
                       </a>
                     </div>
                   </div>
@@ -830,6 +892,9 @@ export default function Landing({
                   {filteredMyLinks.map((item) => {
                     const isEditing = editingFolderId === item.folderId;
                     const isCopied = copiedFolderId === item.folderId;
+                    const selectedCount = item.selectedCount ?? 0;
+                    const annotatedCount = item.annotatedCount ?? 0;
+                    const hasCustomerSelection = selectedCount > 0 || annotatedCount > 0;
                     const formattedDate = (() => {
                       try {
                         return new Date(item.createdAt).toLocaleString('vi-VN', {
@@ -904,6 +969,60 @@ export default function Landing({
                                 ID: {item.folderId.slice(0, 14)}...
                               </span>
                             </div>
+
+                            {/* Customer selection status, selected photo count & annotated photo count */}
+                            <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                              <span
+                                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold border ${
+                                  hasCustomerSelection
+                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                    : 'bg-slate-100 text-slate-500 border-slate-200'
+                                }`}
+                              >
+                                <span
+                                  className={`w-1.5 h-1.5 rounded-full ${
+                                    hasCustomerSelection ? 'bg-emerald-500' : 'bg-slate-400'
+                                  }`}
+                                />
+                                {hasCustomerSelection ? 'Khách đã chọn ảnh' : 'Chưa chọn ảnh'}
+                              </span>
+
+                              <span
+                                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold border ${
+                                  selectedCount > 0
+                                    ? 'bg-rose-50 text-rose-600 border-rose-200'
+                                    : 'bg-white text-slate-500 border-slate-200'
+                                }`}
+                                title="Số lượng ảnh khách đã chọn"
+                              >
+                                <Heart
+                                  className={`w-3 h-3 ${
+                                    selectedCount > 0 ? 'fill-rose-500 text-rose-500' : 'text-slate-400'
+                                  }`}
+                                />
+                                <span>
+                                  Đã chọn: <strong className="font-black">{selectedCount}</strong> ảnh
+                                </span>
+                              </span>
+
+                              <span
+                                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold border ${
+                                  annotatedCount > 0
+                                    ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                    : 'bg-white text-slate-500 border-slate-200'
+                                }`}
+                                title="Số lượng ảnh khách đã khoanh vùng & ghi chú"
+                              >
+                                <PenTool
+                                  className={`w-3 h-3 ${
+                                    annotatedCount > 0 ? 'text-amber-600' : 'text-slate-400'
+                                  }`}
+                                />
+                                <span>
+                                  Ghi chú: <strong className="font-black">{annotatedCount}</strong> ảnh
+                                </span>
+                              </span>
+                            </div>
                           </div>
 
                           <button
@@ -918,38 +1037,34 @@ export default function Landing({
                         </div>
 
                         {/* Action buttons row */}
-                        <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-200/60">
+                        <div className="flex items-center gap-2 pt-1.5 border-t border-slate-200/60">
                           <button
                             type="button"
                             onClick={() => {
                               setShowMyLinksModal(false);
                               onStart(item.folderId);
                             }}
-                            className="flex-1 min-w-[130px] py-1.5 px-3 bg-sky-500 hover:bg-sky-600 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-2xs transition cursor-pointer"
+                            className="flex-1 min-w-[110px] h-9 px-3.5 bg-sky-500 hover:bg-sky-600 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-2xs transition cursor-pointer"
                           >
                             <FolderOpen className="w-3.5 h-3.5" />
-                            <span>Mở trang chọn ảnh</span>
+                            <span>Mở link</span>
                           </button>
 
                           <button
                             type="button"
                             onClick={() => handleCopyShareLink(item.folderId)}
-                            className={`py-1.5 px-3 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 border transition cursor-pointer ${
+                            title={isCopied ? 'Đã copy link gửi khách!' : 'Copy link gửi khách'}
+                            aria-label="Copy link gửi khách"
+                            className={`w-9 h-9 rounded-xl flex items-center justify-center border transition cursor-pointer shrink-0 ${
                               isCopied
-                                ? 'bg-emerald-50 border-emerald-300 text-emerald-700'
-                                : 'bg-white hover:bg-slate-100 border-slate-200 text-slate-700'
+                                ? 'bg-emerald-50 border-emerald-300 text-emerald-600'
+                                : 'bg-white hover:bg-slate-100 border-slate-200 text-slate-600 hover:text-sky-600'
                             }`}
                           >
                             {isCopied ? (
-                              <>
-                                <Check className="w-3.5 h-3.5 text-emerald-600" />
-                                <span>Đã copy link!</span>
-                              </>
+                              <Check className="w-4 h-4 text-emerald-600" />
                             ) : (
-                              <>
-                                <Copy className="w-3.5 h-3.5 text-slate-500" />
-                                <span>Copy link gửi khách</span>
-                              </>
+                              <Copy className="w-4 h-4" />
                             )}
                           </button>
 
@@ -957,11 +1072,18 @@ export default function Landing({
                             href={item.driveUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="py-1.5 px-2.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 hover:text-sky-600 font-bold text-xs rounded-xl flex items-center gap-1 transition"
+                            className="w-9 h-9 bg-white hover:bg-slate-100 border border-slate-200 rounded-xl flex items-center justify-center transition shrink-0"
                             title="Mở thư mục Google Drive gốc"
+                            aria-label="Mở thư mục Google Drive gốc"
                           >
-                            <ExternalLink className="w-3.5 h-3.5" />
-                            <span>Drive gốc</span>
+                            <svg className="w-4 h-4" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg">
+                              <path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da" />
+                              <path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0 -1.2 4.5h27.5z" fill="#00ac47" />
+                              <path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z" fill="#ea4335" />
+                              <path d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d" />
+                              <path d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc" />
+                              <path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 28h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00" />
+                            </svg>
                           </a>
                         </div>
                       </div>
