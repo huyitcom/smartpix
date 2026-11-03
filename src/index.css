@@ -1,1 +1,24 @@
 @import "tailwindcss";
+
+@keyframes rainbow-border-spin {
+  0% {
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
+  100% {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
+}
+
+.animate-rainbow-spin {
+  top: 50% !important;
+  left: 50% !important;
+  transform: translate(-50%, -50%) rotate(0deg);
+  animation: rainbow-border-spin 4.5s linear infinite;
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-rainbow-spin {
+    animation: none;
+  }
+}

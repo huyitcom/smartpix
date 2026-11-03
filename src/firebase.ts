@@ -663,7 +663,11 @@ export const fetchAllLinkHistory = async (): Promise<LinkHistoryItem[]> => {
 };
 
 export const fetchUserLinkHistory = async (user: UserProfile | null): Promise<LinkHistoryItem[]> => {
-  if (!user) return [];
+  if (!user) {
+    return getLocalUserLinks('guest').sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+  }
 
   const guestItems = getLocalUserLinks('guest').map((item) => ({
     ...item,
@@ -727,12 +731,11 @@ export const updateLinkCustomTitle = async (
   if (!folderId) return;
   const trimmed = customTitle.trim();
 
-  if (user?.uid) {
-    const local = getLocalUserLinks(user.uid).map((item) =>
-      item.folderId === folderId ? { ...item, customTitle: trimmed } : item
-    );
-    saveLocalUserLinks(user.uid, local);
-  }
+  const targetUid = user?.uid || 'guest';
+  const local = getLocalUserLinks(targetUid).map((item) =>
+    item.folderId === folderId ? { ...item, customTitle: trimmed } : item
+  );
+  saveLocalUserLinks(targetUid, local);
 
   try {
     await fetch('/api/links/record', {
@@ -771,10 +774,9 @@ export const deleteUserLinkItem = async (
 ): Promise<void> => {
   if (!folderId) return;
 
-  if (user?.uid) {
-    const filtered = getLocalUserLinks(user.uid).filter((i) => i.folderId !== folderId);
-    saveLocalUserLinks(user.uid, filtered);
-  }
+  const targetUid = user?.uid || 'guest';
+  const filtered = getLocalUserLinks(targetUid).filter((i) => i.folderId !== folderId);
+  saveLocalUserLinks(targetUid, filtered);
 
   try {
     await fetch(`/api/links/${encodeURIComponent(folderId)}`, {

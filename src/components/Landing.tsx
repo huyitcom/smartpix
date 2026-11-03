@@ -29,8 +29,6 @@ import {
   fetchUserLinkHistory,
   updateLinkCustomTitle,
   deleteUserLinkItem,
-  getGuestCreatedCount,
-  incrementGuestCreatedCount,
 } from '../firebase';
 import AuthModal from './AuthModal';
 import UserProfileModal from './UserProfileModal';
@@ -60,8 +58,7 @@ export default function Landing({
   const [showMyLinksModal, setShowMyLinksModal] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
 
-  // Guest 1-time limit states
-  const [guestCreateCount, setGuestCreateCount] = useState<number>(() => getGuestCreatedCount());
+  // Login requirement states
   const [showGuestLimitModal, setShowGuestLimitModal] = useState(false);
   const [pendingCreateFolder, setPendingCreateFolder] = useState<{
     folderId: string;
@@ -80,10 +77,6 @@ export default function Landing({
   const [deletingFolderId, setDeletingFolderId] = useState<string | null>(null);
 
   const loadMemberLinks = async (profile: UserProfile | null) => {
-    if (!profile) {
-      setMyLinks([]);
-      return;
-    }
     setLoadingMyLinks(true);
     try {
       const items = await fetchUserLinkHistory(profile);
@@ -96,12 +89,7 @@ export default function Landing({
   };
 
   useEffect(() => {
-    setGuestCreateCount(getGuestCreatedCount());
-    if (userProfile) {
-      loadMemberLinks(userProfile);
-    } else {
-      setMyLinks([]);
-    }
+    loadMemberLinks(userProfile);
   }, [userProfile?.uid, userProfile?.email]);
 
   const handleDirectGoogleLogin = async () => {
@@ -176,23 +164,16 @@ export default function Landing({
       : `https://drive.google.com/drive/folders/${id}`;
     const trimmedTitle = customTitle.trim() || undefined;
 
-    // Kiểm tra giới hạn khi chưa đăng nhập: chỉ cho tạo trang 1 lần đầu, từ lần thứ 2 bắt buộc đăng nhập
+    // Bắt buộc đăng nhập ngay lần đầu tiên tạo trang (không cho thử)
     if (!userProfile) {
-      const currentGuestCount = getGuestCreatedCount();
-      if (currentGuestCount >= 1) {
-        setError('');
-        setPendingCreateFolder({
-          folderId: id,
-          driveUrl: normalizedDriveUrl,
-          customTitle: trimmedTitle,
-        });
-        setShowGuestLimitModal(true);
-        return;
-      }
-
-      // Lần đầu tiên của khách chưa đăng nhập -> cho phép tạo và tăng bộ đếm
-      const nextCount = incrementGuestCreatedCount();
-      setGuestCreateCount(nextCount);
+      setError('');
+      setPendingCreateFolder({
+        folderId: id,
+        driveUrl: normalizedDriveUrl,
+        customTitle: trimmedTitle,
+      });
+      setShowGuestLimitModal(true);
+      return;
     }
 
     setError('');
@@ -412,99 +393,344 @@ export default function Landing({
         </div>
       </div>
 
-      {/* Main Form Card */}
-      <div className="bg-white rounded-3xl shadow-xl w-full max-w-xl p-2 border-2 border-sky-100 mb-6">
-        <form onSubmit={handleSubmit} className="p-4 md:p-6 flex flex-col gap-5">
-          <div>
-            <label className="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wider">
-              Link thư mục Google Drive
-            </label>
-            <div className="relative flex items-center">
-              <div className="absolute left-4 text-slate-400">
-                <LinkIcon className="w-5 h-5" />
-              </div>
-              <input
-                type="text"
-                value={link}
-                onChange={(e) => setLink(e.target.value)}
-                placeholder="https://drive.google.com/drive/folders/..."
-                className="w-full pl-12 pr-4 py-3 bg-slate-100 border-2 border-transparent focus:border-sky-400 rounded-full text-sm text-slate-700 font-medium outline-none transition-colors"
-              />
-            </div>
+      {/* Main Form Card with Google AI Studio Animated Multicolor Running Border */}
+      <div className="relative w-full max-w-xl mb-6 group">
+        {/* Luminous Ambient Glow (Signature Google AI Studio aura reflection) */}
+        <div 
+          className="absolute -inset-1 rounded-[34px] overflow-hidden blur-lg opacity-40 group-hover:opacity-65 transition-opacity duration-500 pointer-events-none"
+          aria-hidden="true"
+        >
+          <div 
+            className="absolute animate-rainbow-spin pointer-events-none"
+            style={{
+              width: '1000px',
+              height: '1000px',
+              background: 'conic-gradient(from 0deg at 50% 50%, #4285F4 0deg, #8B5CF6 45deg, #EC4899 90deg, #EA4335 140deg, #FBBC05 190deg, #34A853 250deg, #06B6D4 310deg, #4285F4 360deg)',
+            }}
+          />
+        </div>
 
-            {/* Optional Album / Customer Name when logged in */}
-            {userProfile && (
-              <div className="mt-3">
+        {/* Outer border wrapper with exact 2.5px thickness and smooth rounded edges */}
+        <div className="relative rounded-[32px] p-[2.5px] overflow-hidden shadow-2xl shadow-sky-500/10">
+          {/* Rotating rainbow conic gradient border layer */}
+          <div 
+            className="absolute animate-rainbow-spin pointer-events-none"
+            style={{
+              width: '1000px',
+              height: '1000px',
+              background: 'conic-gradient(from 0deg at 50% 50%, #4285F4 0deg, #8B5CF6 45deg, #EC4899 90deg, #EA4335 140deg, #FBBC05 190deg, #34A853 250deg, #06B6D4 310deg, #4285F4 360deg)',
+            }}
+            aria-hidden="true"
+          />
+
+          {/* Inner Card Content */}
+          <div className="relative bg-white rounded-[29.5px] p-2">
+            <form onSubmit={handleSubmit} className="p-4 md:p-6 flex flex-col gap-5">
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wider">
+                  Link thư mục Google Drive
+                </label>
                 <div className="relative flex items-center">
                   <div className="absolute left-4 text-slate-400">
-                    <Tag className="w-4 h-4" />
+                    <LinkIcon className="w-5 h-5" />
                   </div>
                   <input
                     type="text"
-                    value={customTitle}
-                    onChange={(e) => setCustomTitle(e.target.value)}
-                    placeholder="Tên gợi nhớ album / khách hàng (Tùy chọn, VD: Cưới Minh - Lan)"
-                    className="w-full pl-11 pr-4 py-2.5 bg-slate-50 border border-slate-200 focus:border-sky-400 rounded-full text-xs text-slate-700 font-medium outline-none transition-colors"
+                    value={link}
+                    onChange={(e) => setLink(e.target.value)}
+                    placeholder="https://drive.google.com/drive/folders/..."
+                    className="w-full pl-12 pr-4 py-3 bg-slate-100 border-2 border-transparent focus:border-sky-400 rounded-full text-sm text-slate-700 font-medium outline-none transition-colors"
                   />
                 </div>
-              </div>
-            )}
 
-            {error && <p className="text-rose-500 text-xs mt-2 font-bold pl-2">{error}</p>}
+                {/* Optional Album / Customer Name when logged in */}
+                {userProfile && (
+                  <div className="mt-3">
+                    <div className="relative flex items-center">
+                      <div className="absolute left-4 text-slate-400">
+                        <Tag className="w-4 h-4" />
+                      </div>
+                      <input
+                        type="text"
+                        value={customTitle}
+                        onChange={(e) => setCustomTitle(e.target.value)}
+                        placeholder="Tên gợi nhớ album / khách hàng (Tùy chọn, VD: Cưới Minh - Lan)"
+                        className="w-full pl-11 pr-4 py-2.5 bg-slate-50 border border-slate-200 focus:border-sky-400 rounded-full text-xs text-slate-700 font-medium outline-none transition-colors"
+                      />
+                    </div>
+                  </div>
+                )}
 
-            <p className="text-xs text-slate-500 mt-3 font-medium px-2 leading-relaxed opacity-80">
-              * Hoạt động mượt mà với thư mục chứa tới 2000 ảnh.
-              <br />
-              * Hãy chắc chắn thư mục đã được chia sẻ <strong>"Bất kỳ ai có liên kết"</strong>.
-            </p>
+                {error && <p className="text-rose-500 text-xs mt-2 font-bold pl-2">{error}</p>}
 
-            {/* Guest 1-time limit notice */}
-            {!userProfile && (
-              <div
-                className={`mt-3 px-3.5 py-2.5 rounded-2xl border text-xs flex items-center justify-between gap-2 ${
-                  guestCreateCount === 0
-                    ? 'bg-sky-50/80 border-sky-200 text-sky-700'
-                    : 'bg-amber-50 border-amber-200 text-amber-800'
-                }`}
-              >
-                <div className="flex items-center gap-2 font-medium">
-                  <Lock className="w-4 h-4 shrink-0 text-sky-500" />
-                  {guestCreateCount === 0 ? (
-                    <span>
-                      Khách chưa đăng nhập được tạo thử <strong>1 trang đầu tiên</strong>. Đăng nhập để tạo không giới hạn & quản lý link!
-                    </span>
-                  ) : (
-                    <span>
-                      Bạn đã dùng <strong>1/1 lượt tạo thử</strong>. Từ lần thứ 2 trở đi vui lòng đăng nhập để tạo tiếp.
-                    </span>
-                  )}
-                </div>
-                {guestCreateCount >= 1 && (
-                  <button
-                    type="button"
-                    onClick={handleDirectGoogleLogin}
-                    className="shrink-0 px-3 py-1.5 bg-sky-500 hover:bg-sky-600 text-white font-bold rounded-full text-[11px] transition cursor-pointer"
-                  >
-                    Đăng nhập ngay
-                  </button>
+                <p className="text-xs text-slate-500 mt-3 font-medium px-2 leading-relaxed opacity-80">
+                  * Hoạt động mượt mà với thư mục chứa tới 2000 ảnh.
+                  <br />
+                  * Hãy chắc chắn thư mục đã được chia sẻ <strong>"Bất kỳ ai có liên kết"</strong>.
+                </p>
+
+                {/* Thông báo bắt buộc đăng nhập để tạo trang */}
+                {!userProfile && (
+                  <div className="mt-3 px-3.5 py-2.5 rounded-2xl border border-sky-200 bg-sky-50/80 text-sky-800 text-xs flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 font-medium">
+                      <Lock className="w-4 h-4 shrink-0 text-sky-500" />
+                      <span>
+                        Vui lòng <strong>đăng nhập Google</strong> để tạo trang chọn ảnh & tự động lưu trữ danh sách link!
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleDirectGoogleLogin}
+                      disabled={googleLoading}
+                      className="shrink-0 px-3.5 py-1.5 bg-sky-500 hover:bg-sky-600 text-white font-bold rounded-full text-[11px] transition cursor-pointer shadow-xs"
+                    >
+                      Đăng nhập ngay
+                    </button>
+                  </div>
                 )}
               </div>
-            )}
-          </div>
 
-          <div className="mt-1">
-            <button
-              type="submit"
-              className="w-full bg-sky-500 hover:bg-sky-600 text-white font-bold py-3.5 rounded-full transition-all shadow-md flex items-center justify-center gap-2 text-lg cursor-pointer"
-            >
-              Tạo trang
-            </button>
+              <div className="mt-1">
+                <button
+                  type="submit"
+                  className="w-full bg-sky-500 hover:bg-sky-600 text-white font-bold py-3.5 rounded-full transition-all shadow-md flex items-center justify-center gap-2 text-lg cursor-pointer"
+                >
+                  Tạo trang
+                </button>
+              </div>
+            </form>
           </div>
-        </form>
+        </div>
       </div>
 
-      {/* Prominent New Feature Banner: Region Marking & Annotations (Placed below main card) */}
-      <FeatureAnnouncementBanner onOpenFilter={handleVIPFilterClick} />
+      {/* Tạm thời ẩn khung Tính năng mới (Khoanh Vùng & Ghi Chú Chỉnh Sửa Ảnh) */}
+      {false && <FeatureAnnouncementBanner onOpenFilter={handleVIPFilterClick} />}
+
+      {/* Khung Lịch sử các link đã tạo (Thay thế vị trí khung tính năng mới) */}
+      <div className="bg-white rounded-3xl shadow-xl w-full max-w-xl p-5 sm:p-6 border-2 border-sky-100 flex flex-col">
+        {/* Header */}
+        <div className="flex items-start justify-between gap-3 pb-4 border-b border-slate-100">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-sky-100 text-sky-600 flex items-center justify-center shrink-0">
+              <History className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-base sm:text-lg font-black text-slate-800 flex items-center gap-2">
+                <span>Lịch sử các link đã tạo</span>
+                <span className="px-2.5 py-0.5 text-xs font-black rounded-full bg-sky-500 text-white">
+                  {myLinks.length}
+                </span>
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Lưu trữ tự động các trang lọc ảnh bạn đã tạo để gửi khách hoặc mở lại nhanh chóng
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={() => loadMemberLinks(userProfile)}
+              disabled={loadingMyLinks}
+              className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer disabled:opacity-50"
+              title="Làm mới danh sách"
+            >
+              <RefreshCw
+                className={`w-3.5 h-3.5 ${loadingMyLinks ? 'animate-spin text-sky-500' : ''}`}
+              />
+              <span className="hidden sm:inline">Làm mới</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Search bar when user has links */}
+        {myLinks.length > 0 && (
+          <div className="relative mt-4">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Tìm theo tên album hoặc mã Folder ID..."
+              className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 focus:border-sky-400 rounded-2xl text-xs text-slate-700 font-medium outline-none transition"
+            />
+          </div>
+        )}
+
+        {/* Links list */}
+        <div className="mt-4 max-h-[380px] overflow-y-auto pr-1">
+          {loadingMyLinks && myLinks.length === 0 ? (
+            <div className="py-10 text-center text-slate-400 text-xs font-medium flex flex-col items-center gap-2">
+              <RefreshCw className="w-6 h-6 animate-spin text-sky-500" />
+              <span>Đang tải danh sách link đã tạo...</span>
+            </div>
+          ) : filteredMyLinks.length === 0 ? (
+            <div className="py-8 px-4 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+              <FolderOpen className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+              <p className="text-xs sm:text-sm font-bold text-slate-600">
+                {searchQuery.trim()
+                  ? 'Không tìm thấy link nào khớp với từ khóa.'
+                  : 'Bạn chưa có link lọc ảnh nào được tạo.'}
+              </p>
+              <p className="text-xs text-slate-400 mt-1">
+                {userProfile
+                  ? 'Hãy dán link thư mục Google Drive ở khung bên trên và bấm "Tạo trang" để bắt đầu!'
+                  : 'Hãy dán link thư mục Google Drive ở trên để tạo trang hoặc đăng nhập để đồng bộ lịch sử link của bạn.'}
+              </p>
+              {!userProfile && (
+                <button
+                  type="button"
+                  onClick={handleDirectGoogleLogin}
+                  disabled={googleLoading}
+                  className="mt-3 inline-flex items-center gap-1.5 px-4 py-2 bg-sky-500 hover:bg-sky-600 text-white font-bold text-xs rounded-full shadow-xs transition cursor-pointer"
+                >
+                  <span>Đăng nhập để đồng bộ link</span>
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {filteredMyLinks.map((item) => {
+                const isEditing = editingFolderId === item.folderId;
+                const isCopied = copiedFolderId === item.folderId;
+                const formattedDate = (() => {
+                  try {
+                    return new Date(item.createdAt).toLocaleString('vi-VN', {
+                      day: '2-digit',
+                      month: '2-digit',
+                      year: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    });
+                  } catch {
+                    return item.createdAt;
+                  }
+                })();
+
+                return (
+                  <div
+                    key={item.folderId}
+                    className="p-3.5 rounded-2xl bg-slate-50 hover:bg-sky-50/50 border border-slate-200/80 hover:border-sky-200 transition flex flex-col gap-2.5"
+                  >
+                    {/* Top row: Title / Edit title & created date */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        {isEditing ? (
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="text"
+                              value={editingTitleValue}
+                              onChange={(e) => setEditingTitleValue(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleSaveCustomTitle(item.folderId);
+                                if (e.key === 'Escape') setEditingFolderId(null);
+                              }}
+                              placeholder="Nhập tên gợi nhớ (VD: Album cưới Minh - Lan)..."
+                              autoFocus
+                              className="flex-1 px-2.5 py-1 bg-white border border-sky-400 rounded-lg text-xs font-bold text-slate-800 outline-none"
+                            />
+                            <button
+                              type="button"
+                              disabled={savingTitleId === item.folderId}
+                              onClick={() => handleSaveCustomTitle(item.folderId)}
+                              className="px-2.5 py-1 bg-sky-500 hover:bg-sky-600 text-white rounded-lg text-[11px] font-bold cursor-pointer"
+                            >
+                              Lưu
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingFolderId(null)}
+                              className="px-2 py-1 bg-slate-200 hover:bg-slate-300 text-slate-600 rounded-lg text-[11px] font-bold cursor-pointer"
+                            >
+                              Hủy
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1.5 group">
+                            <span className="text-sm font-black text-slate-800 truncate">
+                              {item.customTitle || `Thư mục #${item.folderId.slice(0, 10)}...`}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleStartEditTitle(item)}
+                              className="p-1 text-slate-400 hover:text-sky-600 rounded-md hover:bg-white transition cursor-pointer"
+                              title="Đặt tên gợi nhớ cho link này"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        )}
+
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-[11px] text-slate-500">
+                          <span>Tạo lúc: {formattedDate}</span>
+                          <span className="font-mono text-[10px] bg-white px-2 py-0.5 rounded border border-slate-200 text-slate-600">
+                            ID: {item.folderId.slice(0, 14)}...
+                          </span>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        disabled={deletingFolderId === item.folderId}
+                        onClick={() => handleDeleteLinkItem(item.folderId)}
+                        className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                        title="Xóa khỏi danh sách của bạn"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    {/* Action buttons row */}
+                    <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-200/60">
+                      <button
+                        type="button"
+                        onClick={() => onStart(item.folderId)}
+                        className="flex-1 min-w-[130px] py-1.5 px-3 bg-sky-500 hover:bg-sky-600 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-2xs transition cursor-pointer"
+                      >
+                        <FolderOpen className="w-3.5 h-3.5" />
+                        <span>Mở trang chọn ảnh</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleCopyShareLink(item.folderId)}
+                        className={`py-1.5 px-3 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 border transition cursor-pointer ${
+                          isCopied
+                            ? 'bg-emerald-50 border-emerald-300 text-emerald-700'
+                            : 'bg-white hover:bg-slate-100 border-slate-200 text-slate-700'
+                        }`}
+                      >
+                        {isCopied ? (
+                          <>
+                            <Check className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>Đã copy link!</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3.5 h-3.5 text-slate-500" />
+                            <span>Copy link gửi khách</span>
+                          </>
+                        )}
+                      </button>
+
+                      <a
+                        href={item.driveUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="py-1.5 px-2.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 hover:text-sky-600 font-bold text-xs rounded-xl flex items-center gap-1 transition"
+                        title="Mở thư mục Google Drive gốc"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        <span>Drive gốc</span>
+                      </a>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* 2 Advertisement Banners (Designed with dual smart placement: Bottom cards + Desktop skyscrapers) */}
       <AdBanners onOpenTopupModal={onOpenTopupModal} />
@@ -748,7 +974,7 @@ export default function Landing({
         </div>
       )}
 
-      {/* Modal yêu cầu đăng nhập khi khách chưa đăng nhập bấm Tạo trang từ lần thứ 2 trở đi */}
+      {/* Modal yêu cầu đăng nhập khi chưa đăng nhập bấm Tạo trang */}
       {showGuestLimitModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6 sm:p-7 relative border border-sky-100 text-center animate-in fade-in zoom-in-95 duration-150">
@@ -765,18 +991,18 @@ export default function Landing({
             </div>
 
             <h3 className="text-xl font-black text-slate-800 mb-2">
-              Vui lòng đăng nhập để tạo trang tiếp!
+              Vui lòng đăng nhập để tạo trang!
             </h3>
             <p className="text-sm text-slate-600 leading-relaxed mb-5">
-              Khách chưa đăng nhập chỉ được tạo thử miễn phí <strong>1 trang đầu tiên</strong>. Từ lần thứ 2 trở đi, bạn cần đăng nhập tài khoản để tiếp tục tạo trang không giới hạn và <strong>quản lý danh sách các link đã tạo</strong>.
+              Để tạo trang chọn lọc ảnh Google Drive và tự động lưu trữ, quản lý danh sách link album gửi cho khách hàng, bạn vui lòng đăng nhập tài khoản Google.
             </p>
 
             <div className="bg-sky-50 border border-sky-100 rounded-2xl p-3.5 text-left text-xs text-sky-900 space-y-1.5 mb-6">
               <div className="font-bold flex items-center gap-1.5 text-sky-700">
                 <Sparkles className="w-4 h-4 text-sky-500" />
-                <span>Quyền lợi sau khi đăng nhập (Miễn phí):</span>
+                <span>Quyền lợi sau khi đăng nhập (Hoàn toàn miễn phí):</span>
               </div>
-              <p>• Tạo trang lọc ảnh Google Drive không giới hạn số lần.</p>
+              <p>• Tạo trang chọn ảnh Google Drive không giới hạn số lần.</p>
               <p>• Tự động lưu & quản lý toàn bộ các link đã tạo cho khách.</p>
               <p>• Đặt tên gợi nhớ cho từng album, copy link gửi khách nhanh chóng.</p>
             </div>
