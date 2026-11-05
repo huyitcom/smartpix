@@ -82,6 +82,8 @@ export interface StoredLinkRecord {
   creatorPhotoURL?: string | null;
   creatorRole: "admin" | "vip" | "user" | "guest";
   photoCount?: number;
+  selectedCount?: number;
+  annotatedCount?: number;
   createdAt: string;
   lastAccessedAt?: string;
 }
@@ -1897,6 +1899,7 @@ CRITICAL RULES FOR REALISTIC WEDDING RETOUCHING (MANDATORY & ABSOLUTE):
   });
 
   // Record link creation event by a member
+  // Record link creation event by a member
   app.post("/api/links/record", async (req, res) => {
     try {
       const {
@@ -1910,6 +1913,7 @@ CRITICAL RULES FOR REALISTIC WEDDING RETOUCHING (MANDATORY & ABSOLUTE):
         creatorRole,
         creatorPhotoURL,
         photoCount,
+        isStatsUpdateOnly,
       } = req.body || {};
 
       if (!folderId) {
@@ -1920,62 +1924,88 @@ CRITICAL RULES FOR REALISTIC WEDDING RETOUCHING (MANDATORY & ABSOLUTE):
         creditsStore.links = {};
       }
 
-      const existing = creditsStore.links[folderId];
+      let existing = creditsStore.links[folderId];
       const nowIso = new Date().toISOString();
+      const currentDb = getSafeDb();
 
-      // IMPORTANT: Never allow a guest visit or anonymous count update to overwrite an existing real creator!
+      // Check Firestore doc first if in-memory store doesn't have it or lacks creator
+      let firestoreDocData: any = null;
+      if (currentDb) {
+        try {
+          const docSnap = await currentDb.collection("link_history").doc(folderId).get();
+          if (docSnap.exists) {
+            firestoreDocData = docSnap.data();
+          }
+        } catch (e) {}
+      }
+
+      const firestoreHasRealCreator = Boolean(
+        firestoreDocData?.creatorUid && firestoreDocData.creatorUid !== "guest"
+      );
+      const existingHasRealCreator = Boolean(
+        existing?.creatorUid && existing.creatorUid !== "guest"
+      );
+
       const hasNewRealCreator = Boolean(creatorUid && creatorUid !== "guest");
-      const existingHasRealCreator = Boolean(existing?.creatorUid && existing.creatorUid !== "guest");
+      const isPureStatsUpdate = Boolean(isStatsUpdateOnly || (!creatorUid && !creatorEmail));
 
-      const finalCreatorUid = hasNewRealCreator
-        ? creatorUid
-        : (existingHasRealCreator ? existing.creatorUid : (creatorUid || "guest"));
+      let finalCreatorUid: string | undefined = undefined;
+      let finalCreatorEmail: string | undefined = undefined;
+      let finalCreatorName: string | undefined = undefined;
+      let finalCreatorRole: "admin" | "vip" | "user" | "guest" | undefined = undefined;
+      let finalCreatorPhotoURL: string | null | undefined = undefined;
 
-      const finalCreatorEmail = hasNewRealCreator
-        ? (creatorEmail || existing?.creatorEmail || "Chưa đăng nhập")
-        : (existingHasRealCreator ? existing.creatorEmail : (creatorEmail || "Chưa đăng nhập"));
-
-      const finalCreatorName = hasNewRealCreator
-        ? (creatorName || existing?.creatorName || "Khách vãng lai")
-        : (existingHasRealCreator ? existing.creatorName : (creatorName || "Khách vãng lai"));
-
-      const finalCreatorRole = hasNewRealCreator
-        ? (creatorRole || existing?.creatorRole || "guest")
-        : (existingHasRealCreator ? existing.creatorRole : (creatorRole || "guest"));
-
-      const finalCreatorPhotoURL = hasNewRealCreator
-        ? (creatorPhotoURL || existing?.creatorPhotoURL || null)
-        : (existingHasRealCreator ? existing.creatorPhotoURL : (creatorPhotoURL || null));
+      if (hasNewRealCreator) {
+        finalCreatorUid = creatorUid;
+        finalCreatorEmail = creatorEmail || "Chưa đăng nhập";
+        finalCreatorName = creatorName || creatorEmail || "Khách vãng lai";
+        finalCreatorRole = (creatorRole as any) || "user";
+        finalCreatorPhotoURL = creatorPhotoURL || null;
+      } else if (firestoreHasRealCreator) {
+        finalCreatorUid = firestoreDocData.creatorUid;
+        finalCreatorEmail = firestoreDocData.creatorEmail;
+        finalCreatorName = firestoreDocData.creatorName;
+        finalCreatorRole = firestoreDocData.creatorRole || "user";
+        finalCreatorPhotoURL = firestoreDocData.creatorPhotoURL || null;
+      } else if (existingHasRealCreator) {
+        finalCreatorUid = existing.creatorUid;
+        finalCreatorEmail = existing.creatorEmail;
+        finalCreatorName = existing.creatorName;
+        finalCreatorRole = existing.creatorRole || "user";
+        finalCreatorPhotoURL = existing.creatorPhotoURL || null;
+      } else if (!isPureStatsUpdate) {
+        // Explicitly passed guest creator
+        finalCreatorUid = creatorUid || "guest";
+        finalCreatorEmail = creatorEmail || "Chưa đăng nhập";
+        finalCreatorName = creatorName || "Khách vãng lai";
+        finalCreatorRole = (creatorRole as any) || "guest";
+        finalCreatorPhotoURL = creatorPhotoURL || null;
+      }
 
       const record: StoredLinkRecord = {
         id: folderId,
         folderId,
-        driveUrl: driveUrl || existing?.driveUrl || `https://drive.google.com/drive/folders/${folderId}`,
-        shareUrl: shareUrl || existing?.shareUrl || `/?folder=${folderId}`,
-        customTitle: typeof customTitle === "string" ? customTitle : existing?.customTitle,
-        creatorUid: finalCreatorUid,
-        creatorEmail: finalCreatorEmail,
-        creatorName: finalCreatorName,
-        creatorRole: finalCreatorRole,
-        creatorPhotoURL: finalCreatorPhotoURL,
-        photoCount: typeof photoCount === "number" ? photoCount : existing?.photoCount,
-        selectedCount: typeof req.body?.selectedCount === "number" ? req.body.selectedCount : existing?.selectedCount,
-        annotatedCount: typeof req.body?.annotatedCount === "number" ? req.body.annotatedCount : existing?.annotatedCount,
-        createdAt: existing?.createdAt || nowIso,
+        driveUrl: driveUrl || existing?.driveUrl || firestoreDocData?.driveUrl || `https://drive.google.com/drive/folders/${folderId}`,
+        shareUrl: shareUrl || existing?.shareUrl || firestoreDocData?.shareUrl || `/?folder=${folderId}`,
+        customTitle: typeof customTitle === "string" ? customTitle : (existing?.customTitle ?? firestoreDocData?.customTitle),
+        creatorUid: finalCreatorUid ?? existing?.creatorUid ?? firestoreDocData?.creatorUid,
+        creatorEmail: finalCreatorEmail ?? existing?.creatorEmail ?? firestoreDocData?.creatorEmail ?? "Chưa đăng nhập",
+        creatorName: finalCreatorName ?? existing?.creatorName ?? firestoreDocData?.creatorName ?? "Khách vãng lai",
+        creatorRole: (finalCreatorRole ?? existing?.creatorRole ?? firestoreDocData?.creatorRole ?? "guest") as any,
+        creatorPhotoURL: finalCreatorPhotoURL !== undefined ? finalCreatorPhotoURL : (existing?.creatorPhotoURL ?? firestoreDocData?.creatorPhotoURL ?? null),
+        photoCount: typeof photoCount === "number" ? photoCount : (existing?.photoCount ?? firestoreDocData?.photoCount),
+        selectedCount: typeof req.body?.selectedCount === "number" ? req.body.selectedCount : (existing?.selectedCount ?? firestoreDocData?.selectedCount),
+        annotatedCount: typeof req.body?.annotatedCount === "number" ? req.body.annotatedCount : (existing?.annotatedCount ?? firestoreDocData?.annotatedCount),
+        createdAt: existing?.createdAt || firestoreDocData?.createdAt || nowIso,
         lastAccessedAt: nowIso,
       };
 
       creditsStore.links[folderId] = record;
       saveCreditsStore(creditsStore);
 
-      const currentDb = getSafeDb();
       if (currentDb) {
         try {
           const docRef = currentDb.collection("link_history").doc(folderId);
-          const docSnap = await docRef.get();
-          const docData = docSnap.exists ? docSnap.data() : null;
-          const firestoreHasRealCreator = Boolean(docData?.creatorUid && docData.creatorUid !== "guest");
-
           const updateData: Record<string, any> = {
             id: folderId,
             folderId,
@@ -1990,16 +2020,16 @@ CRITICAL RULES FOR REALISTIC WEDDING RETOUCHING (MANDATORY & ABSOLUTE):
           if (typeof record.selectedCount === "number") updateData.selectedCount = record.selectedCount;
           if (typeof record.annotatedCount === "number") updateData.annotatedCount = record.annotatedCount;
 
-          // Only write creator fields if we have a real creator or if the doc never had one
-          if (hasNewRealCreator || !firestoreHasRealCreator) {
-            updateData.creatorUid = finalCreatorUid;
-            updateData.creatorEmail = finalCreatorEmail;
-            updateData.creatorName = finalCreatorName;
-            updateData.creatorRole = finalCreatorRole;
-            updateData.creatorPhotoURL = finalCreatorPhotoURL;
+          // Only write creator fields if we have a real creator or caller explicitly created the link
+          if (hasNewRealCreator || (!isPureStatsUpdate && !firestoreHasRealCreator)) {
+            updateData.creatorUid = record.creatorUid;
+            updateData.creatorEmail = record.creatorEmail;
+            updateData.creatorName = record.creatorName;
+            updateData.creatorRole = record.creatorRole;
+            updateData.creatorPhotoURL = record.creatorPhotoURL;
           }
 
-          if (!docSnap.exists && !existing?.createdAt) {
+          if (!firestoreDocData && !existing?.createdAt) {
             updateData.createdAt = FieldValue.serverTimestamp();
           }
 
@@ -2012,6 +2042,103 @@ CRITICAL RULES FOR REALISTIC WEDDING RETOUCHING (MANDATORY & ABSOLUTE):
       res.json({ success: true, link: record });
     } catch (err: any) {
       res.status(500).json({ error: err.message || "Lỗi lưu lịch sử tạo link" });
+    }
+  });
+
+  // Admin: Assign creator to a link
+  app.post("/api/admin/links/assign-creator", async (req, res) => {
+    try {
+      const { folderId, targetUid, targetEmail, targetName, targetRole, targetPhotoURL, originalCreatedAt } = req.body || {};
+      if (!folderId || !targetUid) {
+        return res.status(400).json({ error: "folderId and targetUid are required" });
+      }
+
+      if (!creditsStore.links) creditsStore.links = {};
+      const existing = creditsStore.links[folderId];
+      const nowIso = new Date().toISOString();
+      const currentDb = getSafeDb();
+
+      let resolvedCreatedAt = originalCreatedAt;
+      if (currentDb) {
+        try {
+          const docSnap = await currentDb.collection("link_history").doc(folderId).get();
+          if (docSnap.exists) {
+            const d = docSnap.data();
+            const fsTime =
+              typeof d?.createdAt === "string"
+                ? d.createdAt
+                : typeof d?.createdAt?.toDate === "function"
+                ? d.createdAt.toDate().toISOString()
+                : (typeof d?.createdAtStr === "string" ? d.createdAtStr : undefined);
+            if (fsTime) {
+              if (!resolvedCreatedAt) {
+                resolvedCreatedAt = fsTime;
+              } else {
+                const tRes = new Date(resolvedCreatedAt).getTime();
+                const tFs = new Date(fsTime).getTime();
+                if (!Number.isNaN(tRes) && !Number.isNaN(tFs) && tFs < tRes) {
+                  resolvedCreatedAt = fsTime;
+                }
+              }
+            }
+          }
+        } catch (e) {}
+      }
+      if (existing?.createdAt) {
+        if (!resolvedCreatedAt) {
+          resolvedCreatedAt = existing.createdAt;
+        } else {
+          const tRes = new Date(resolvedCreatedAt).getTime();
+          const tEx = new Date(existing.createdAt).getTime();
+          if (!Number.isNaN(tRes) && !Number.isNaN(tEx) && tEx < tRes) {
+            resolvedCreatedAt = existing.createdAt;
+          }
+        }
+      }
+
+      const updatedRecord: StoredLinkRecord = {
+        id: folderId,
+        folderId,
+        driveUrl: existing?.driveUrl || `https://drive.google.com/drive/folders/${folderId}`,
+        shareUrl: existing?.shareUrl || `/?folder=${folderId}`,
+        customTitle: existing?.customTitle,
+        creatorUid: targetUid,
+        creatorEmail: targetEmail || "Chưa đăng nhập",
+        creatorName: targetName || targetEmail || "Thành viên",
+        creatorRole: (targetRole as any) || "user",
+        creatorPhotoURL: targetPhotoURL || null,
+        photoCount: existing?.photoCount,
+        selectedCount: existing?.selectedCount,
+        annotatedCount: existing?.annotatedCount,
+        createdAt: resolvedCreatedAt || nowIso,
+        lastAccessedAt: nowIso,
+      };
+
+      creditsStore.links[folderId] = updatedRecord;
+      saveCreditsStore(creditsStore);
+
+      if (currentDb) {
+        try {
+          const docRef = currentDb.collection("link_history").doc(folderId);
+          await docRef.set(
+            {
+              creatorUid: targetUid,
+              creatorEmail: targetEmail || "Chưa đăng nhập",
+              creatorName: targetName || targetEmail || "Thành viên",
+              creatorRole: targetRole || "user",
+              creatorPhotoURL: targetPhotoURL || null,
+              updatedAt: FieldValue.serverTimestamp(),
+            },
+            { merge: true }
+          );
+        } catch (e) {
+          console.warn("Could not assign link creator in Firestore Admin:", e);
+        }
+      }
+
+      res.json({ success: true, link: updatedRecord });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || "Lỗi gán người tạo link" });
     }
   });
 

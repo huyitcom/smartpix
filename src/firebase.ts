@@ -639,7 +639,7 @@ export const updateLinkStats = async (
 ): Promise<void> => {
   if (!folderId) return;
   try {
-    // 1. Post stats update to server (does not touch creator)
+    // 1. Post stats update to server (isStatsUpdateOnly: true prevents overwriting creator)
     fetch('/api/links/record', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -648,6 +648,7 @@ export const updateLinkStats = async (
         photoCount: stats.photoCount,
         selectedCount: stats.selectedCount,
         annotatedCount: stats.annotatedCount,
+        isStatsUpdateOnly: true,
       }),
     }).catch(() => {});
 
@@ -683,8 +684,38 @@ export const recordLinkCreation = async (data: {
 }): Promise<void> => {
   if (!data.folderId) return;
   try {
-    const hasRealCreator = Boolean(data.creator && data.creator.uid && data.creator.uid !== 'guest');
-    const uid = hasRealCreator ? data.creator!.uid : 'guest';
+    // Resolve creator: if not provided or marked guest, check auth.currentUser and local storage
+    let activeCreator: UserProfile | null = data.creator || null;
+    if (!activeCreator || !activeCreator.uid || activeCreator.uid === 'guest') {
+      if (auth?.currentUser) {
+        const u = auth.currentUser;
+        const isOwnerAdmin = u.email === 'huyitcom@gmail.com' || Boolean(u.email?.includes('huyitcom'));
+        activeCreator = {
+          uid: u.uid,
+          email: u.email,
+          displayName: u.displayName || (u.email ? u.email.split('@')[0] : 'Tài khoản Google'),
+          photoURL: u.photoURL,
+          role: isOwnerAdmin ? 'admin' : 'user',
+          credits: isOwnerAdmin ? 25 : 3,
+          renderCount: 0,
+        };
+      } else {
+        try {
+          const raw = localStorage.getItem('photobook_local_user');
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed?.uid && parsed.uid !== 'guest') {
+              activeCreator = parsed;
+            }
+          }
+        } catch {}
+      }
+    }
+
+    const hasRealCreator = Boolean(
+      activeCreator && activeCreator.uid && activeCreator.uid !== 'guest' && activeCreator.email
+    );
+    const uid = hasRealCreator ? activeCreator!.uid : 'guest';
     const existingLocal = getLocalUserLinks(uid).find((i) => i.folderId === data.folderId);
 
     // Check if Firestore already has a real creator for this link
@@ -700,25 +731,40 @@ export const recordLinkCreation = async (data: {
     }
 
     const firestoreHasRealCreator = Boolean(
-      existingFirestoreData?.creatorUid && existingFirestoreData.creatorUid !== 'guest'
+      existingFirestoreData?.creatorUid &&
+        existingFirestoreData.creatorUid !== 'guest' &&
+        existingFirestoreData?.creatorEmail &&
+        existingFirestoreData.creatorEmail !== 'Chưa đăng nhập'
     );
 
     // If caller provided a real logged-in creator, use it. Otherwise, strictly preserve existing creator!
     const finalUid = hasRealCreator
-      ? data.creator!.uid
-      : (firestoreHasRealCreator ? existingFirestoreData.creatorUid : (existingLocal?.creatorUid || 'guest'));
+      ? activeCreator!.uid
+      : (firestoreHasRealCreator ? existingFirestoreData.creatorUid : (existingLocal?.creatorUid || undefined));
     const finalEmail = hasRealCreator
-      ? (data.creator!.email || 'Chưa đăng nhập')
-      : (firestoreHasRealCreator ? existingFirestoreData.creatorEmail : (existingLocal?.creatorEmail || 'Chưa đăng nhập'));
+      ? (activeCreator!.email || 'Chưa đăng nhập')
+      : (firestoreHasRealCreator ? existingFirestoreData.creatorEmail : (existingLocal?.creatorEmail || undefined));
     const finalName = hasRealCreator
-      ? (data.creator!.displayName || data.creator!.email || 'Khách vãng lai')
-      : (firestoreHasRealCreator ? existingFirestoreData.creatorName : (existingLocal?.creatorName || 'Khách vãng lai'));
+      ? (activeCreator!.displayName || activeCreator!.email || 'Khách vãng lai')
+      : (firestoreHasRealCreator ? existingFirestoreData.creatorName : (existingLocal?.creatorName || undefined));
     const finalRole = hasRealCreator
-      ? ((data.creator!.role as any) || 'user')
-      : (firestoreHasRealCreator ? existingFirestoreData.creatorRole : ((existingLocal?.creatorRole as any) || 'guest'));
+      ? ((activeCreator!.role as any) || 'user')
+      : (firestoreHasRealCreator ? existingFirestoreData.creatorRole : ((existingLocal?.creatorRole as any) || undefined));
     const finalPhotoURL = hasRealCreator
-      ? (data.creator!.photoURL || null)
+      ? (activeCreator!.photoURL || null)
       : (firestoreHasRealCreator ? existingFirestoreData.creatorPhotoURL : (existingLocal?.creatorPhotoURL || null));
+
+    let originalCreatedAt: string | undefined = undefined;
+    if (existingFirestoreData?.createdAt) {
+      if (typeof existingFirestoreData.createdAt === 'string') {
+        originalCreatedAt = existingFirestoreData.createdAt;
+      } else if (typeof existingFirestoreData.createdAt?.toDate === 'function') {
+        originalCreatedAt = existingFirestoreData.createdAt.toDate().toISOString();
+      }
+    }
+    if (!originalCreatedAt && existingLocal?.createdAt) {
+      originalCreatedAt = existingLocal.createdAt;
+    }
 
     const payload: LinkHistoryItem = {
       id: data.folderId,
@@ -726,30 +772,31 @@ export const recordLinkCreation = async (data: {
       driveUrl: data.driveUrl || existingFirestoreData?.driveUrl || existingLocal?.driveUrl || `https://drive.google.com/drive/folders/${data.folderId}`,
       shareUrl: typeof window !== 'undefined' ? `${window.location.origin}/?folder=${data.folderId}` : `/?folder=${data.folderId}`,
       customTitle: data.customTitle ?? existingFirestoreData?.customTitle ?? existingLocal?.customTitle,
-      creatorUid: finalUid,
-      creatorEmail: finalEmail,
-      creatorName: finalName,
-      creatorRole: finalRole,
+      creatorUid: finalUid || 'guest',
+      creatorEmail: finalEmail || 'Chưa đăng nhập',
+      creatorName: finalName || 'Khách vãng lai',
+      creatorRole: (finalRole as any) || 'guest',
       creatorPhotoURL: finalPhotoURL,
       photoCount: data.photoCount ?? existingFirestoreData?.photoCount ?? existingLocal?.photoCount,
       selectedCount: data.selectedCount ?? existingFirestoreData?.selectedCount ?? existingLocal?.selectedCount,
       annotatedCount: data.annotatedCount ?? existingFirestoreData?.annotatedCount ?? existingLocal?.annotatedCount,
-      createdAt: existingFirestoreData?.createdAtStr || existingLocal?.createdAt || new Date().toISOString(),
+      createdAt: originalCreatedAt || new Date().toISOString(),
       lastAccessedAt: new Date().toISOString(),
     };
 
     // 0. Save to local storage for the creator
     if (hasRealCreator) {
-      const currentLocal = getLocalUserLinks(finalUid).filter((i) => i.folderId !== data.folderId);
-      saveLocalUserLinks(finalUid, [payload, ...currentLocal]);
+      const currentLocal = getLocalUserLinks(finalUid!).filter((i) => i.folderId !== data.folderId);
+      saveLocalUserLinks(finalUid!, [payload, ...currentLocal]);
     }
 
-    // 1. Post to backend server API
+    // 1. Post to backend server API with keepalive
     try {
       await fetch('/api/links/record', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
+        keepalive: true,
       });
     } catch (e) {
       // ignore
@@ -772,16 +819,23 @@ export const recordLinkCreation = async (data: {
         if (payload.selectedCount !== undefined) firestoreData.selectedCount = payload.selectedCount;
         if (payload.annotatedCount !== undefined) firestoreData.annotatedCount = payload.annotatedCount;
 
-        // ONLY overwrite creator fields if we have a real creator OR if the document never had one
-        if (hasRealCreator || !firestoreHasRealCreator) {
-          firestoreData.creatorUid = payload.creatorUid;
-          firestoreData.creatorEmail = payload.creatorEmail;
-          firestoreData.creatorName = payload.creatorName;
-          firestoreData.creatorRole = payload.creatorRole;
-          firestoreData.creatorPhotoURL = payload.creatorPhotoURL;
+        // ONLY write creator fields if we have a real creator or if Firestore already had one
+        if (hasRealCreator) {
+          firestoreData.creatorUid = finalUid;
+          firestoreData.creatorEmail = finalEmail;
+          firestoreData.creatorName = finalName;
+          firestoreData.creatorRole = finalRole;
+          firestoreData.creatorPhotoURL = finalPhotoURL;
+        } else if (firestoreHasRealCreator) {
+          firestoreData.creatorUid = existingFirestoreData.creatorUid;
+          firestoreData.creatorEmail = existingFirestoreData.creatorEmail;
+          firestoreData.creatorName = existingFirestoreData.creatorName;
+          firestoreData.creatorRole = existingFirestoreData.creatorRole;
+          firestoreData.creatorPhotoURL = existingFirestoreData.creatorPhotoURL;
         }
 
-        if (!existingFirestoreData && !existingLocal?.createdAt) {
+        // Only set createdAt if the document doesn't have an existing creation timestamp
+        if (!existingFirestoreData?.createdAt && !originalCreatedAt) {
           firestoreData.createdAt = serverTimestamp();
         }
 
@@ -792,6 +846,58 @@ export const recordLinkCreation = async (data: {
     }
   } catch (err) {
     console.warn('Error recording link creation:', err);
+  }
+};
+
+export const assignLinkCreator = async (
+  folderId: string,
+  user: {
+    uid: string;
+    email: string;
+    displayName: string;
+    role?: 'admin' | 'vip' | 'user';
+    photoURL?: string | null;
+  },
+  originalCreatedAt?: string
+): Promise<void> => {
+  if (!folderId || !user.uid) return;
+  const role = user.role || (user.email === 'huyitcom@gmail.com' ? 'admin' : 'user');
+
+  try {
+    // 1. Post to backend
+    await fetch('/api/admin/links/assign-creator', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        folderId,
+        targetUid: user.uid,
+        targetEmail: user.email,
+        targetName: user.displayName || user.email,
+        targetRole: role,
+        targetPhotoURL: user.photoURL || null,
+        originalCreatedAt,
+      }),
+    }).catch(() => {});
+
+    // 2. Direct Firestore update - updates creator & updatedAt, preserves original createdAt
+    if (db) {
+      const linkDocRef = doc(db, 'link_history', folderId);
+      const updateData: Record<string, any> = {
+        creatorUid: user.uid,
+        creatorEmail: user.email,
+        creatorName: user.displayName || user.email,
+        creatorRole: role,
+        creatorPhotoURL: user.photoURL || null,
+        updatedAt: serverTimestamp(),
+      };
+      if (originalCreatedAt) {
+        updateData.createdAt = originalCreatedAt;
+        updateData.createdAtStr = originalCreatedAt;
+      }
+      await setDoc(linkDocRef, updateData, { merge: true });
+    }
+  } catch (err) {
+    console.warn('Could not assign link creator:', err);
   }
 };
 
@@ -807,8 +913,10 @@ export const fetchAllLinkHistory = async (): Promise<LinkHistoryItem[]> => {
         const createdAtStr =
           typeof d.createdAt === 'string'
             ? d.createdAt
-            : d.createdAt?.toDate
+            : typeof d.createdAt?.toDate === 'function'
             ? d.createdAt.toDate().toISOString()
+            : typeof d.createdAtStr === 'string'
+            ? d.createdAtStr
             : new Date().toISOString();
         const lastAccessedAtStr =
           typeof d.lastAccessedAt === 'string'
@@ -850,14 +958,54 @@ export const fetchAllLinkHistory = async (): Promise<LinkHistoryItem[]> => {
         const map = new Map<string, LinkHistoryItem>();
         for (const l of [...list, ...serverLinks]) {
           const existing = map.get(l.folderId);
-          if (!existing || new Date(l.createdAt).getTime() >= new Date(existing.createdAt).getTime()) {
+          if (!existing) {
+            map.set(l.folderId, { ...l });
+          } else {
+            // Strictly preserve earliest createdAt
+            const tExisting = new Date(existing.createdAt).getTime();
+            const tNew = new Date(l.createdAt).getTime();
+            const earliestCreatedAt =
+              !Number.isNaN(tExisting) && !Number.isNaN(tNew)
+                ? (tExisting <= tNew ? existing.createdAt : l.createdAt)
+                : (existing.createdAt || l.createdAt);
+
+            // Always prioritize non-guest real creator
+            const hasExistingCreator = existing.creatorUid && existing.creatorUid !== 'guest';
+            const hasNewCreator = l.creatorUid && l.creatorUid !== 'guest';
+
+            let creatorUid = existing.creatorUid;
+            let creatorName = existing.creatorName;
+            let creatorEmail = existing.creatorEmail;
+            let creatorRole = existing.creatorRole;
+            let creatorPhotoURL = existing.creatorPhotoURL;
+
+            if (hasNewCreator) {
+              creatorUid = l.creatorUid;
+              creatorName = l.creatorName;
+              creatorEmail = l.creatorEmail;
+              creatorRole = l.creatorRole;
+              creatorPhotoURL = l.creatorPhotoURL;
+            } else if (!hasExistingCreator && l.creatorUid) {
+              creatorUid = l.creatorUid;
+              creatorName = l.creatorName;
+              creatorEmail = l.creatorEmail;
+              creatorRole = l.creatorRole;
+              creatorPhotoURL = l.creatorPhotoURL;
+            }
+
             map.set(l.folderId, {
               ...existing,
               ...l,
-              customTitle: l.customTitle || existing?.customTitle,
-              photoCount: l.photoCount ?? existing?.photoCount,
-              selectedCount: l.selectedCount ?? existing?.selectedCount,
-              annotatedCount: l.annotatedCount ?? existing?.annotatedCount,
+              creatorUid,
+              creatorName,
+              creatorEmail,
+              creatorRole,
+              creatorPhotoURL,
+              createdAt: earliestCreatedAt,
+              customTitle: l.customTitle || existing.customTitle,
+              photoCount: l.photoCount ?? existing.photoCount,
+              selectedCount: l.selectedCount ?? existing.selectedCount,
+              annotatedCount: l.annotatedCount ?? existing.annotatedCount,
             });
           }
         }

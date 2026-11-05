@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Shield,
   Users,
@@ -37,6 +37,7 @@ import {
   updateFirestoreUser,
   fetchAllLinkHistory,
   LinkHistoryItem,
+  assignLinkCreator,
 } from '../firebase';
 import { BannersConfig } from '../types';
 import {
@@ -136,6 +137,76 @@ export default function AdminDashboard({
   const [customCreditMode, setCustomCreditMode] = useState<'add' | 'set'>('add');
   const [customCreditValue, setCustomCreditValue] = useState<string>('20');
   const [customRoleValue, setCustomRoleValue] = useState<'admin' | 'vip' | 'user'>('vip');
+
+  // Assign link creator state
+  const [assigningFolderId, setAssigningFolderId] = useState<string | null>(null);
+  const [selectedAssignUid, setSelectedAssignUid] = useState<string>('');
+
+  const handleAssignLinkCreator = async (folderId: string, targetUid: string) => {
+    const targetUser = users.find((u) => u.uid === targetUid);
+    if (!targetUser) return;
+    const currentLink = links.find((l) => l.folderId === folderId);
+    try {
+      await assignLinkCreator(
+        folderId,
+        {
+          uid: targetUser.uid,
+          email: targetUser.email,
+          displayName: targetUser.displayName,
+          role: targetUser.role,
+          photoURL: targetUser.photoURL,
+        },
+        currentLink?.createdAt
+      );
+      setLinks((prev) =>
+        prev.map((l) =>
+          l.folderId === folderId
+            ? {
+                ...l,
+                creatorUid: targetUser.uid,
+                creatorEmail: targetUser.email,
+                creatorName: targetUser.displayName,
+                creatorRole: targetUser.role,
+                creatorPhotoURL: targetUser.photoURL,
+                // Strictly preserve original createdAt
+                createdAt: l.createdAt,
+              }
+            : l
+        )
+      );
+      setAssigningFolderId(null);
+      setSelectedAssignUid('');
+      showToast(`✓ Đã gán link cho thành viên: ${targetUser.displayName} (${targetUser.email})`);
+    } catch {
+      showToast('⚠️ Lỗi khi gán người tạo link');
+    }
+  };
+
+  const getSuggestedUserForLink = (linkCreatedAt: string): AdminUserRecord | null => {
+    if (!linkCreatedAt || users.length === 0) return null;
+    const linkTime = new Date(linkCreatedAt).getTime();
+    if (Number.isNaN(linkTime)) return null;
+
+    let closestUser: AdminUserRecord | null = null;
+    let minDiff = 4 * 60 * 60 * 1000; // within 4 hours
+
+    for (const u of users) {
+      if (u.role === 'admin' && (u.email === 'huyitcom@gmail.com' || u.email?.includes('huyitcom'))) continue;
+      const userTimes = [
+        u.lastLoginAt ? new Date(u.lastLoginAt).getTime() : 0,
+        u.createdAt ? new Date(u.createdAt).getTime() : 0,
+      ].filter((t) => t > 0);
+
+      for (const t of userTimes) {
+        const diff = Math.abs(linkTime - t);
+        if (diff < minDiff) {
+          minDiff = diff;
+          closestUser = u;
+        }
+      }
+    }
+    return closestUser;
+  };
 
   const showToast = (msg: string) => {
     setToastMsg(msg);
@@ -282,6 +353,11 @@ export default function AdminDashboard({
     showToast(`✓ Đã xóa ảnh banner. Bấm 'LƯU TẤT CẢ BANNER' để áp dụng!`);
   };
 
+  const currentUserRef = useRef(currentUser);
+  currentUserRef.current = currentUser;
+  const onUpdateCurrentUserRef = useRef(onUpdateCurrentUser);
+  onUpdateCurrentUserRef.current = onUpdateCurrentUser;
+
   const fetchOverview = useCallback(async () => {
     setLoading(true);
     try {
@@ -295,7 +371,6 @@ export default function AdminDashboard({
 
       // 1. Pull link creation history from both Firestore and Server store
       const fetchedLinks = await fetchAllLinkHistory();
-      setLinks(fetchedLinks);
 
       // 2. Pull all users directly from Firebase Firestore 'users' collection (photo-picker-507413)
       const { users: fbUsers, permissionDenied } = await fetchAllFirestoreUsersResult();
@@ -314,57 +389,112 @@ export default function AdminDashboard({
         setOrders(data.orders || []);
         setRenderLogs(data.renderLogs || []);
 
-        if (Array.isArray(data.links) && data.links.length > 0) {
-          const map = new Map<string, LinkHistoryItem>();
-          for (const l of [...fetchedLinks, ...data.links]) {
-            const existing = map.get(l.folderId);
-            if (!existing || new Date(l.createdAt).getTime() >= new Date(existing.createdAt).getTime()) {
-              map.set(l.folderId, {
-                ...existing,
-                ...l,
-                photoCount: l.photoCount ?? existing?.photoCount,
-              });
-            }
-          }
-          setLinks(Array.from(map.values()).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
-        }
+        const serverLinks = Array.isArray(data.links) ? data.links : [];
+        const map = new Map<string, LinkHistoryItem>();
+        for (const l of [...fetchedLinks, ...serverLinks]) {
+          const existing = map.get(l.folderId);
+          if (!existing) {
+            map.set(l.folderId, { ...l });
+          } else {
+            // Strictly preserve the earliest createdAt (the immutable initial creation time)
+            const tExisting = new Date(existing.createdAt).getTime();
+            const tNew = new Date(l.createdAt).getTime();
+            const earliestCreatedAt =
+              !Number.isNaN(tExisting) && !Number.isNaN(tNew)
+                ? tExisting <= tNew
+                  ? existing.createdAt
+                  : l.createdAt
+                : existing.createdAt || l.createdAt;
 
-        if (currentUser && onUpdateCurrentUser) {
+            // Preserve whichever record has the assigned creator
+            const hasExistingCreator = existing.creatorUid && existing.creatorUid !== 'guest';
+            const hasNewCreator = l.creatorUid && l.creatorUid !== 'guest';
+
+            let creatorUid = existing.creatorUid;
+            let creatorName = existing.creatorName;
+            let creatorEmail = existing.creatorEmail;
+            let creatorRole = existing.creatorRole;
+            let creatorPhotoURL = existing.creatorPhotoURL;
+
+            if (hasNewCreator) {
+              creatorUid = l.creatorUid;
+              creatorName = l.creatorName;
+              creatorEmail = l.creatorEmail;
+              creatorRole = l.creatorRole;
+              creatorPhotoURL = l.creatorPhotoURL;
+            } else if (hasExistingCreator) {
+              creatorUid = existing.creatorUid;
+              creatorName = existing.creatorName;
+              creatorEmail = existing.creatorEmail;
+              creatorRole = existing.creatorRole;
+              creatorPhotoURL = existing.creatorPhotoURL;
+            }
+
+            map.set(l.folderId, {
+              ...existing,
+              ...l,
+              creatorUid,
+              creatorName,
+              creatorEmail,
+              creatorRole,
+              creatorPhotoURL,
+              createdAt: earliestCreatedAt,
+              photoCount: l.photoCount ?? existing.photoCount,
+              selectedCount: l.selectedCount ?? existing.selectedCount,
+              annotatedCount: l.annotatedCount ?? existing.annotatedCount,
+            });
+          }
+        }
+        setLinks(
+          Array.from(map.values()).sort(
+            (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          )
+        );
+
+        if (currentUserRef.current && onUpdateCurrentUserRef.current) {
           const me = mergedUsers.find(
             (u: AdminUserRecord) =>
-              u.uid === currentUser.uid ||
-              (u.email && currentUser.email && u.email.toLowerCase() === currentUser.email.toLowerCase())
+              u.uid === currentUserRef.current?.uid ||
+              (u.email && currentUserRef.current?.email && u.email.toLowerCase() === currentUserRef.current.email.toLowerCase())
           );
-          if (me) {
-            onUpdateCurrentUser({
-              ...currentUser,
+          if (
+            me &&
+            (me.credits !== currentUserRef.current.credits ||
+             me.renderCount !== currentUserRef.current.renderCount ||
+             me.role !== currentUserRef.current.role)
+          ) {
+            onUpdateCurrentUserRef.current({
+              ...currentUserRef.current,
               credits: me.credits,
               renderCount: me.renderCount,
               role: me.role,
             });
           }
         }
-      } else if (fbUsers.length > 0) {
-        setUsers(
-          fbUsers.map((u) => ({
-            uid: u.uid,
-            email: u.email || `${u.uid}@photobook.vn`,
-            displayName: u.displayName || 'Khách hàng',
-            photoURL: u.photoURL,
-            role: u.role,
-            credits: u.credits ?? 3,
-            renderCount: u.renderCount ?? 0,
-            createdAt: u.createdAt,
-            lastLoginAt: u.lastLoginAt,
-          }))
-        );
+      } else {
+        setLinks(fetchedLinks);
+        if (fbUsers.length > 0) {
+          setUsers(
+            fbUsers.map((u) => ({
+              uid: u.uid,
+              email: u.email || `${u.uid}@photobook.vn`,
+              displayName: u.displayName || 'Khách hàng',
+              photoURL: u.photoURL,
+              role: u.role,
+              credits: u.credits ?? 3,
+              renderCount: u.renderCount ?? 0,
+              createdAt: u.createdAt,
+              lastLoginAt: u.lastLoginAt,
+            }))
+          );
+        }
       }
     } catch (err) {
       console.error('Error loading admin overview:', err);
     } finally {
       setLoading(false);
     }
-  }, [currentUser, onUpdateCurrentUser]);
+  }, []);
 
   useEffect(() => {
     fetchOverview();
@@ -1373,6 +1503,109 @@ export default function AdminDashboard({
                                     </div>
                                     <div className="text-xs text-slate-400 truncate max-w-[200px]">
                                       {item.creatorEmail || 'Chưa đăng nhập'}
+                                    </div>
+
+                                    {/* Action to Assign / Change Link Creator */}
+                                    <div className="mt-1">
+                                      {(() => {
+                                        const suggested = getSuggestedUserForLink(item.createdAt);
+                                        const isGuest =
+                                          item.creatorUid === 'guest' ||
+                                          !item.creatorUid ||
+                                          item.creatorName === 'Khách vãng lai';
+
+                                        if (assigningFolderId === item.folderId) {
+                                          return (
+                                            <div className="flex flex-col gap-1.5 mt-1.5 bg-[#0b0f19] p-2.5 rounded-xl border border-sky-500/60 shadow-xl z-10 w-fit">
+                                              {suggested && (
+                                                <div className="text-[10px] text-amber-300 flex items-center gap-1 bg-amber-950/50 px-2 py-1 rounded-lg border border-amber-500/30">
+                                                  <Sparkles className="w-3 h-3 text-amber-400 shrink-0" />
+                                                  <span>Khớp giờ online:</span>
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => setSelectedAssignUid(suggested.uid)}
+                                                    className="underline hover:text-white font-bold cursor-pointer"
+                                                  >
+                                                    {suggested.displayName} ({suggested.email})
+                                                  </button>
+                                                </div>
+                                              )}
+                                              <div className="flex items-center gap-1.5">
+                                                <select
+                                                  value={selectedAssignUid}
+                                                  onChange={(e) => setSelectedAssignUid(e.target.value)}
+                                                  className="bg-slate-800 text-white text-[11px] rounded-lg px-2.5 py-1.5 outline-none border border-slate-700 max-w-[210px]"
+                                                >
+                                                  <option value="">-- Chọn thành viên gán --</option>
+                                                  {users.map((u) => (
+                                                    <option key={u.uid} value={u.uid}>
+                                                      {u.displayName} ({u.email})
+                                                    </option>
+                                                  ))}
+                                                </select>
+                                                <button
+                                                  type="button"
+                                                  disabled={!selectedAssignUid}
+                                                  onClick={() => handleAssignLinkCreator(item.folderId, selectedAssignUid)}
+                                                  className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white font-bold text-[10px] rounded-lg transition cursor-pointer"
+                                                >
+                                                  Lưu
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  onClick={() => {
+                                                    setAssigningFolderId(null);
+                                                    setSelectedAssignUid('');
+                                                  }}
+                                                  className="p-1 text-slate-400 hover:text-white cursor-pointer"
+                                                >
+                                                  <X className="w-3.5 h-3.5" />
+                                                </button>
+                                              </div>
+                                            </div>
+                                          );
+                                        }
+
+                                        return (
+                                          <div className="flex items-center gap-1.5 flex-wrap">
+                                            {isGuest && suggested && (
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  setAssigningFolderId(item.folderId);
+                                                  setSelectedAssignUid(suggested.uid);
+                                                }}
+                                                className="px-2 py-0.5 rounded-md bg-amber-500/15 border border-amber-500/30 text-amber-300 hover:bg-amber-500/25 text-[10px] font-bold flex items-center gap-1 cursor-pointer transition"
+                                                title={`Khớp giờ đăng nhập gần nhất: ${suggested.displayName} (${suggested.email})`}
+                                              >
+                                                <Sparkles className="w-2.5 h-2.5 text-amber-400" />
+                                                <span>Gợi ý: {suggested.displayName}</span>
+                                              </button>
+                                            )}
+
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                setAssigningFolderId(item.folderId);
+                                                setSelectedAssignUid(
+                                                  item.creatorUid && item.creatorUid !== 'guest'
+                                                    ? item.creatorUid
+                                                    : suggested?.uid || ''
+                                                );
+                                              }}
+                                              className={`text-[10px] font-bold flex items-center gap-1 cursor-pointer transition ${
+                                                isGuest
+                                                  ? 'text-sky-400 hover:text-sky-300 hover:underline'
+                                                  : 'text-slate-500 hover:text-slate-300'
+                                              }`}
+                                              title="Gán người tạo link này"
+                                            >
+                                              <UserPlus className="w-3 h-3" />
+                                              <span>{isGuest ? 'Gán thành viên tạo' : 'Đổi'}</span>
+                                            </button>
+                                          </div>
+                                        );
+                                      })()}
                                     </div>
                                   </div>
                                 </div>

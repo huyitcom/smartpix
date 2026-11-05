@@ -160,6 +160,23 @@ export default function Gallery({
           photoCount: fetchedList.length,
         });
 
+        // Auto-claim: If the link is currently unclaimed ("guest" / "Khách vãng lai") and the visitor is a logged-in member
+        if (userProfile && userProfile.uid && userProfile.uid !== 'guest' && db) {
+          try {
+            const linkSnap = await getDoc(doc(db, 'link_history', folderId));
+            if (linkSnap.exists()) {
+              const ld = linkSnap.data();
+              if (!ld.creatorUid || ld.creatorUid === 'guest' || ld.creatorEmail === 'Chưa đăng nhập' || ld.creatorName === 'Khách vãng lai') {
+                recordLinkCreation({
+                  folderId,
+                  creator: userProfile,
+                  photoCount: fetchedList.length,
+                });
+              }
+            }
+          } catch {}
+        }
+
         // Fetch saved selections & annotations from server (which reads from persistent disk storage)
         const resSelections = await fetch(`/api/albums/${folderId}/selections?t=${Date.now()}`, {
           cache: 'no-store'

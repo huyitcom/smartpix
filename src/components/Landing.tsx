@@ -31,6 +31,7 @@ import {
   fetchUserLinkHistory,
   updateLinkCustomTitle,
   deleteUserLinkItem,
+  auth,
 } from '../firebase';
 import AuthModal from './AuthModal';
 import UserProfileModal from './UserProfileModal';
@@ -59,6 +60,7 @@ export default function Landing({
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showMyLinksModal, setShowMyLinksModal] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [isCreatingLink, setIsCreatingLink] = useState(false);
 
   // Login requirement states
   const [showGuestLimitModal, setShowGuestLimitModal] = useState(false);
@@ -101,17 +103,22 @@ export default function Landing({
       setUserProfile(profile);
       setShowGuestLimitModal(false);
 
-      // If the user had a pending link from hitting the 2nd guest creation limit, proceed automatically
+      // If the user had a pending link from hitting the guest creation limit, proceed automatically
       if (pendingCreateFolder) {
         const pending = pendingCreateFolder;
         setPendingCreateFolder(null);
-        await recordLinkCreation({
-          folderId: pending.folderId,
-          driveUrl: pending.driveUrl,
-          customTitle: pending.customTitle,
-          creator: profile,
-        });
-        onStart(pending.folderId);
+        setIsCreatingLink(true);
+        try {
+          await recordLinkCreation({
+            folderId: pending.folderId,
+            driveUrl: pending.driveUrl,
+            customTitle: pending.customTitle,
+            creator: profile,
+          });
+          onStart(pending.folderId);
+        } finally {
+          setIsCreatingLink(false);
+        }
       }
     } catch (err: any) {
       console.warn('Direct Google sign-in:', err);
@@ -149,8 +156,9 @@ export default function Landing({
     return null;
   };
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (isCreatingLink) return;
     if (!link.trim()) {
       setError('Vui lòng nhập link thư mục Google Drive.');
       return;
@@ -166,8 +174,36 @@ export default function Landing({
       : `https://drive.google.com/drive/folders/${id}`;
     const trimmedTitle = customTitle.trim() || undefined;
 
+    // Resolve the active authenticated user from profile, auth.currentUser or local storage
+    let activeUser = userProfile;
+    if (!activeUser && auth?.currentUser) {
+      const u = auth.currentUser;
+      const isOwnerAdmin = u.email === 'huyitcom@gmail.com' || Boolean(u.email?.includes('huyitcom'));
+      activeUser = {
+        uid: u.uid,
+        email: u.email,
+        displayName: u.displayName || (u.email ? u.email.split('@')[0] : 'Tài khoản Google'),
+        photoURL: u.photoURL,
+        role: isOwnerAdmin ? 'admin' : 'user',
+        credits: isOwnerAdmin ? 25 : 3,
+        renderCount: 0,
+      };
+      setUserProfile(activeUser);
+    } else if (!activeUser) {
+      try {
+        const raw = localStorage.getItem('photobook_local_user');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed?.uid && parsed.uid !== 'guest') {
+            activeUser = parsed;
+            setUserProfile(activeUser);
+          }
+        }
+      } catch {}
+    }
+
     // Bắt buộc đăng nhập ngay lần đầu tiên tạo trang (không cho thử)
-    if (!userProfile) {
+    if (!activeUser) {
       setError('');
       setPendingCreateFolder({
         folderId: id,
@@ -179,13 +215,21 @@ export default function Landing({
     }
 
     setError('');
-    recordLinkCreation({
-      folderId: id,
-      driveUrl: normalizedDriveUrl,
-      customTitle: trimmedTitle,
-      creator: userProfile,
-    });
-    onStart(id);
+    setIsCreatingLink(true);
+    try {
+      await recordLinkCreation({
+        folderId: id,
+        driveUrl: normalizedDriveUrl,
+        customTitle: trimmedTitle,
+        creator: activeUser,
+      });
+      onStart(id);
+    } catch (err) {
+      console.warn('recordLinkCreation error:', err);
+      onStart(id);
+    } finally {
+      setIsCreatingLink(false);
+    }
   };
 
   const handleCopyShareLink = (folderId: string) => {
@@ -495,9 +539,17 @@ export default function Landing({
               <div className="mt-1">
                 <button
                   type="submit"
-                  className="w-full bg-sky-500 hover:bg-sky-600 text-white font-bold py-3.5 rounded-full transition-all shadow-md flex items-center justify-center gap-2 text-lg cursor-pointer"
+                  disabled={isCreatingLink}
+                  className="w-full bg-sky-500 hover:bg-sky-600 disabled:opacity-75 text-white font-bold py-3.5 rounded-full transition-all shadow-md flex items-center justify-center gap-2 text-lg cursor-pointer disabled:cursor-not-allowed"
                 >
-                  Tạo trang
+                  {isCreatingLink ? (
+                    <>
+                      <div className="w-5 h-5 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                      <span>Đang tạo trang chọn ảnh...</span>
+                    </>
+                  ) : (
+                    <span>Tạo trang</span>
+                  )}
                 </button>
               </div>
             </form>
@@ -1173,13 +1225,18 @@ export default function Landing({
           if (pendingCreateFolder) {
             const pending = pendingCreateFolder;
             setPendingCreateFolder(null);
-            await recordLinkCreation({
-              folderId: pending.folderId,
-              driveUrl: pending.driveUrl,
-              customTitle: pending.customTitle,
-              creator: profile,
-            });
-            onStart(pending.folderId);
+            setIsCreatingLink(true);
+            try {
+              await recordLinkCreation({
+                folderId: pending.folderId,
+                driveUrl: pending.driveUrl,
+                customTitle: pending.customTitle,
+                creator: profile,
+              });
+              onStart(pending.folderId);
+            } finally {
+              setIsCreatingLink(false);
+            }
           }
         }}
       />
