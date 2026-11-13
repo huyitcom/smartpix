@@ -182,18 +182,15 @@ export default function AdminDashboard({
     }
   };
 
-  const findClosestSuggestedUser = (
-    linkCreatedAt: string,
-    candidateUsers: AdminUserRecord[]
-  ): AdminUserRecord | null => {
-    if (!linkCreatedAt || candidateUsers.length === 0) return null;
+  const getSuggestedUserForLink = (linkCreatedAt: string): AdminUserRecord | null => {
+    if (!linkCreatedAt || users.length === 0) return null;
     const linkTime = new Date(linkCreatedAt).getTime();
     if (Number.isNaN(linkTime)) return null;
 
     let closestUser: AdminUserRecord | null = null;
     let minDiff = 4 * 60 * 60 * 1000; // within 4 hours
 
-    for (const u of candidateUsers) {
+    for (const u of users) {
       if (u.role === 'admin' && (u.email === 'huyitcom@gmail.com' || u.email?.includes('huyitcom'))) continue;
       const userTimes = [
         u.lastLoginAt ? new Date(u.lastLoginAt).getTime() : 0,
@@ -209,10 +206,6 @@ export default function AdminDashboard({
       }
     }
     return closestUser;
-  };
-
-  const getSuggestedUserForLink = (linkCreatedAt: string): AdminUserRecord | null => {
-    return findClosestSuggestedUser(linkCreatedAt, users);
   };
 
   const showToast = (msg: string) => {
@@ -452,41 +445,8 @@ export default function AdminDashboard({
             });
           }
         }
-        const finalMergedLinks = Array.from(map.values()).map((item) => {
-          const isGuest =
-            !item.creatorUid ||
-            item.creatorUid === 'guest' ||
-            item.creatorName === 'Khách vãng lai';
-          if (isGuest && mergedUsers.length > 0) {
-            const suggested = findClosestSuggestedUser(item.createdAt, mergedUsers);
-            if (suggested) {
-              assignLinkCreator(
-                item.folderId,
-                {
-                  uid: suggested.uid,
-                  email: suggested.email,
-                  displayName: suggested.displayName,
-                  role: suggested.role,
-                  photoURL: suggested.photoURL,
-                },
-                item.createdAt
-              ).catch(() => {});
-
-              return {
-                ...item,
-                creatorUid: suggested.uid,
-                creatorEmail: suggested.email,
-                creatorName: suggested.displayName,
-                creatorRole: suggested.role,
-                creatorPhotoURL: suggested.photoURL,
-              };
-            }
-          }
-          return item;
-        });
-
         setLinks(
-          finalMergedLinks.sort(
+          Array.from(map.values()).sort(
             (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
           )
         );

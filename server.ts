@@ -1810,62 +1810,6 @@ CRITICAL RULES FOR REALISTIC WEDDING RETOUCHING (MANDATORY & ABSOLUTE):
           creatorName = existing.creatorName;
           creatorRole = existing.creatorRole;
           creatorPhotoURL = existing.creatorPhotoURL ?? null;
-        } else {
-          // Auto-match guest link against closest active user within 4 hours of creation
-          const linkTime = new Date(earliestCreatedAt).getTime();
-          if (!Number.isNaN(linkTime)) {
-            let closestUser: StoredUserRecord | null = null;
-            let minDiff = 4 * 60 * 60 * 1000;
-            for (const u of Object.values(creditsStore.users || {})) {
-              if (u.role === "admin" && (u.email === "huyitcom@gmail.com" || u.email?.includes("huyitcom"))) continue;
-              const times = [
-                u.lastLoginAt ? new Date(u.lastLoginAt).getTime() : 0,
-                u.createdAt ? new Date(u.createdAt).getTime() : 0,
-              ].filter((t) => t > 0);
-              for (const t of times) {
-                const diff = Math.abs(linkTime - t);
-                if (diff < minDiff) {
-                  minDiff = diff;
-                  closestUser = u;
-                }
-              }
-            }
-            if (closestUser) {
-              creatorUid = closestUser.uid;
-              creatorEmail = closestUser.email || "Chưa đăng nhập";
-              creatorName = closestUser.displayName || closestUser.email || "Thành viên";
-              creatorRole = (closestUser.role || "user") as any;
-              creatorPhotoURL = closestUser.photoURL ?? null;
-
-              // Persist auto-matched creator back to Firestore via REST PATCH in background
-              const patchFields: Record<string, any> = {
-                createdAt: { stringValue: earliestCreatedAt },
-                originalCreatedAt: { stringValue: earliestCreatedAt },
-                createdAtStr: { stringValue: earliestCreatedAt },
-                creatorUid: { stringValue: creatorUid },
-                creatorEmail: { stringValue: creatorEmail },
-                creatorName: { stringValue: creatorName },
-                creatorRole: { stringValue: creatorRole },
-                creatorPhotoURL: creatorPhotoURL ? { stringValue: creatorPhotoURL } : { nullValue: null },
-                assignedCreatorUid: { stringValue: creatorUid },
-                assignedCreatorEmail: { stringValue: creatorEmail },
-                assignedCreatorName: { stringValue: creatorName },
-                assignedCreatorRole: { stringValue: creatorRole },
-                assignedCreatorPhotoURL: creatorPhotoURL ? { stringValue: creatorPhotoURL } : { nullValue: null },
-              };
-              const mask = Object.keys(patchFields)
-                .map((k) => `updateMask.fieldPaths=${k}`)
-                .join("&");
-              fetch(
-                `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/link_history/${docId}?${mask}`,
-                {
-                  method: "PATCH",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ fields: patchFields }),
-                }
-              ).catch(() => {});
-            }
-          }
         }
 
         creditsStore.links[folderId] = {
