@@ -1730,6 +1730,172 @@ CRITICAL RULES FOR REALISTIC WEDDING RETOUCHING (MANDATORY & ABSOLUTE):
     }
   }
 
+  async function syncFirestoreLinksViaRest(): Promise<void> {
+    try {
+      const projectId = process.env.VITE_FIREBASE_PROJECT_ID || "photo-picker-507413";
+      const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/link_history?pageSize=300`;
+      const resp = await fetch(url);
+      if (!resp.ok) return;
+      const data: any = await resp.json();
+      const docs = Array.isArray(data?.documents) ? data.documents : [];
+      if (!creditsStore.links) creditsStore.links = {};
+      let changed = false;
+
+      for (const docItem of docs) {
+        const nameParts = String(docItem.name || "").split("/");
+        const docId = nameParts[nameParts.length - 1] || "";
+        const fields = docItem.fields || {};
+        const getStr = (f: any) => f?.stringValue ?? undefined;
+        const getNum = (f: any) =>
+          f?.integerValue !== undefined
+            ? Number(f.integerValue)
+            : f?.doubleValue !== undefined
+            ? Number(f.doubleValue)
+            : undefined;
+        const getTime = (f: any) => f?.timestampValue || f?.stringValue || undefined;
+
+        const folderId = getStr(fields.folderId) || docId;
+        if (!folderId) continue;
+
+        const existing = creditsStore.links[folderId];
+        const sysCreateTime = docItem.createTime;
+        const fieldTime =
+          getTime(fields.originalCreatedAt) ||
+          getTime(fields.createdAtStr) ||
+          getTime(fields.createdAt);
+
+        let earliestCreatedAt = sysCreateTime || fieldTime || existing?.createdAt || new Date().toISOString();
+        if (sysCreateTime && fieldTime) {
+          const tSys = new Date(sysCreateTime).getTime();
+          const tField = new Date(fieldTime).getTime();
+          if (!Number.isNaN(tSys) && !Number.isNaN(tField)) {
+            earliestCreatedAt = tSys <= tField ? sysCreateTime : fieldTime;
+          }
+        }
+        if (existing?.createdAt) {
+          const tEx = new Date(existing.createdAt).getTime();
+          const tEar = new Date(earliestCreatedAt).getTime();
+          if (!Number.isNaN(tEx) && !Number.isNaN(tEar) && tEx < tEar) {
+            earliestCreatedAt = existing.createdAt;
+          }
+        }
+
+        const assignedUid = getStr(fields.assignedCreatorUid);
+        const rawUid = getStr(fields.creatorUid);
+        const hasAssigned = Boolean(assignedUid && assignedUid !== "guest");
+        const hasRaw = Boolean(rawUid && rawUid !== "guest");
+        const hasExisting = Boolean(existing?.creatorUid && existing.creatorUid !== "guest");
+
+        let creatorUid = "guest";
+        let creatorEmail = "Chưa đăng nhập";
+        let creatorName = "Khách vãng lai";
+        let creatorRole: "admin" | "vip" | "user" | "guest" = "guest";
+        let creatorPhotoURL: string | null = null;
+
+        if (hasAssigned) {
+          creatorUid = assignedUid!;
+          creatorEmail = getStr(fields.assignedCreatorEmail) || getStr(fields.creatorEmail) || "Chưa đăng nhập";
+          creatorName = getStr(fields.assignedCreatorName) || getStr(fields.creatorName) || "Khách vãng lai";
+          creatorRole = (getStr(fields.assignedCreatorRole) || getStr(fields.creatorRole) || "user") as any;
+          creatorPhotoURL = getStr(fields.assignedCreatorPhotoURL) ?? getStr(fields.creatorPhotoURL) ?? null;
+        } else if (hasRaw) {
+          creatorUid = rawUid!;
+          creatorEmail = getStr(fields.creatorEmail) || "Chưa đăng nhập";
+          creatorName = getStr(fields.creatorName) || "Khách vãng lai";
+          creatorRole = (getStr(fields.creatorRole) || "user") as any;
+          creatorPhotoURL = getStr(fields.creatorPhotoURL) ?? null;
+        } else if (hasExisting) {
+          creatorUid = existing.creatorUid!;
+          creatorEmail = existing.creatorEmail;
+          creatorName = existing.creatorName;
+          creatorRole = existing.creatorRole;
+          creatorPhotoURL = existing.creatorPhotoURL ?? null;
+        } else {
+          // Auto-match guest link against closest active user within 4 hours of creation
+          const linkTime = new Date(earliestCreatedAt).getTime();
+          if (!Number.isNaN(linkTime)) {
+            let closestUser: StoredUserRecord | null = null;
+            let minDiff = 4 * 60 * 60 * 1000;
+            for (const u of Object.values(creditsStore.users || {})) {
+              if (u.role === "admin" && (u.email === "huyitcom@gmail.com" || u.email?.includes("huyitcom"))) continue;
+              const times = [
+                u.lastLoginAt ? new Date(u.lastLoginAt).getTime() : 0,
+                u.createdAt ? new Date(u.createdAt).getTime() : 0,
+              ].filter((t) => t > 0);
+              for (const t of times) {
+                const diff = Math.abs(linkTime - t);
+                if (diff < minDiff) {
+                  minDiff = diff;
+                  closestUser = u;
+                }
+              }
+            }
+            if (closestUser) {
+              creatorUid = closestUser.uid;
+              creatorEmail = closestUser.email || "Chưa đăng nhập";
+              creatorName = closestUser.displayName || closestUser.email || "Thành viên";
+              creatorRole = (closestUser.role || "user") as any;
+              creatorPhotoURL = closestUser.photoURL ?? null;
+
+              // Persist auto-matched creator back to Firestore via REST PATCH in background
+              const patchFields: Record<string, any> = {
+                createdAt: { stringValue: earliestCreatedAt },
+                originalCreatedAt: { stringValue: earliestCreatedAt },
+                createdAtStr: { stringValue: earliestCreatedAt },
+                creatorUid: { stringValue: creatorUid },
+                creatorEmail: { stringValue: creatorEmail },
+                creatorName: { stringValue: creatorName },
+                creatorRole: { stringValue: creatorRole },
+                creatorPhotoURL: creatorPhotoURL ? { stringValue: creatorPhotoURL } : { nullValue: null },
+                assignedCreatorUid: { stringValue: creatorUid },
+                assignedCreatorEmail: { stringValue: creatorEmail },
+                assignedCreatorName: { stringValue: creatorName },
+                assignedCreatorRole: { stringValue: creatorRole },
+                assignedCreatorPhotoURL: creatorPhotoURL ? { stringValue: creatorPhotoURL } : { nullValue: null },
+              };
+              const mask = Object.keys(patchFields)
+                .map((k) => `updateMask.fieldPaths=${k}`)
+                .join("&");
+              fetch(
+                `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/link_history/${docId}?${mask}`,
+                {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ fields: patchFields }),
+                }
+              ).catch(() => {});
+            }
+          }
+        }
+
+        creditsStore.links[folderId] = {
+          id: docId,
+          folderId,
+          driveUrl: getStr(fields.driveUrl) || existing?.driveUrl || `https://drive.google.com/drive/folders/${folderId}`,
+          shareUrl: getStr(fields.shareUrl) || existing?.shareUrl || `/?folder=${folderId}`,
+          customTitle: getStr(fields.customTitle) || existing?.customTitle,
+          creatorUid,
+          creatorEmail,
+          creatorName,
+          creatorRole,
+          creatorPhotoURL,
+          photoCount: getNum(fields.photoCount) ?? existing?.photoCount,
+          selectedCount: getNum(fields.selectedCount) ?? existing?.selectedCount,
+          annotatedCount: getNum(fields.annotatedCount) ?? existing?.annotatedCount,
+          createdAt: earliestCreatedAt,
+          lastAccessedAt: getTime(fields.lastAccessedAt) || docItem.updateTime || existing?.lastAccessedAt,
+        };
+        changed = true;
+      }
+
+      if (changed) {
+        saveCreditsStore(creditsStore);
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+
   function buildAdminOverviewResponse() {
     const allUsers = Object.values(creditsStore.users).sort((a, b) => {
       if (a.role === "admin" && b.role !== "admin") return -1;
@@ -1777,6 +1943,7 @@ CRITICAL RULES FOR REALISTIC WEDDING RETOUCHING (MANDATORY & ABSOLUTE):
           mergeFirestoreUsersList(restUsers);
         }
       }
+      await syncFirestoreLinksViaRest();
 
       res.json(buildAdminOverviewResponse());
     } catch (err: any) {
@@ -1796,6 +1963,7 @@ CRITICAL RULES FOR REALISTIC WEDDING RETOUCHING (MANDATORY & ABSOLUTE):
           mergeFirestoreUsersList(restUsers);
         }
       }
+      await syncFirestoreLinksViaRest();
       res.json(buildAdminOverviewResponse());
     } catch (err: any) {
       res.status(500).json({ error: err.message || "Lỗi đồng bộ danh sách thành viên từ Firebase" });
@@ -2027,10 +2195,19 @@ CRITICAL RULES FOR REALISTIC WEDDING RETOUCHING (MANDATORY & ABSOLUTE):
             updateData.creatorName = record.creatorName;
             updateData.creatorRole = record.creatorRole;
             updateData.creatorPhotoURL = record.creatorPhotoURL;
+            if (hasNewRealCreator) {
+              updateData.assignedCreatorUid = record.creatorUid;
+              updateData.assignedCreatorEmail = record.creatorEmail;
+              updateData.assignedCreatorName = record.creatorName;
+              updateData.assignedCreatorRole = record.creatorRole;
+              updateData.assignedCreatorPhotoURL = record.creatorPhotoURL;
+            }
           }
 
           if (!firestoreDocData && !existing?.createdAt) {
             updateData.createdAt = FieldValue.serverTimestamp();
+            updateData.originalCreatedAt = nowIso;
+            updateData.createdAtStr = nowIso;
           }
 
           await docRef.set(updateData, { merge: true });
@@ -2065,7 +2242,9 @@ CRITICAL RULES FOR REALISTIC WEDDING RETOUCHING (MANDATORY & ABSOLUTE):
           if (docSnap.exists) {
             const d = docSnap.data();
             const fsTime =
-              typeof d?.createdAt === "string"
+              typeof d?.originalCreatedAt === "string"
+                ? d.originalCreatedAt
+                : typeof d?.createdAt === "string"
                 ? d.createdAt
                 : typeof d?.createdAt?.toDate === "function"
                 ? d.createdAt.toDate().toISOString()
@@ -2127,6 +2306,11 @@ CRITICAL RULES FOR REALISTIC WEDDING RETOUCHING (MANDATORY & ABSOLUTE):
               creatorName: targetName || targetEmail || "Thành viên",
               creatorRole: targetRole || "user",
               creatorPhotoURL: targetPhotoURL || null,
+              assignedCreatorUid: targetUid,
+              assignedCreatorEmail: targetEmail || "Chưa đăng nhập",
+              assignedCreatorName: targetName || targetEmail || "Thành viên",
+              assignedCreatorRole: targetRole || "user",
+              assignedCreatorPhotoURL: targetPhotoURL || null,
               updatedAt: FieldValue.serverTimestamp(),
             },
             { merge: true }
@@ -2173,55 +2357,15 @@ CRITICAL RULES FOR REALISTIC WEDDING RETOUCHING (MANDATORY & ABSOLUTE):
   // Admin: Get all member-created links
   app.get("/api/admin/links", async (_req, res) => {
     try {
-      const currentDb = getSafeDb();
-      if (currentDb) {
-        try {
-          const linksSnap = await currentDb.collection("link_history").get();
-          if (!creditsStore.links) creditsStore.links = {};
-          linksSnap.forEach((docSnap: any) => {
-            const d = docSnap.data();
-            if (d && d.folderId) {
-              const existing = creditsStore.links[d.folderId];
-              creditsStore.links[d.folderId] = {
-                id: docSnap.id,
-                folderId: d.folderId,
-                driveUrl: d.driveUrl || `https://drive.google.com/drive/folders/${d.folderId}`,
-                shareUrl: d.shareUrl,
-                customTitle: d.customTitle || existing?.customTitle,
-                creatorUid: d.creatorUid,
-                creatorEmail: d.creatorEmail || "Chưa đăng nhập",
-                creatorName: d.creatorName || "Khách vãng lai",
-                creatorRole: d.creatorRole || "guest",
-                creatorPhotoURL: d.creatorPhotoURL || null,
-                photoCount: typeof d.photoCount === "number" ? d.photoCount : existing?.photoCount,
-                createdAt:
-                  typeof d.createdAt === "string"
-                    ? d.createdAt
-                    : d.createdAt?.toDate
-                    ? d.createdAt.toDate().toISOString()
-                    : existing?.createdAt || new Date().toISOString(),
-                lastAccessedAt:
-                  typeof d.lastAccessedAt === "string"
-                    ? d.lastAccessedAt
-                    : d.lastAccessedAt?.toDate
-                    ? d.lastAccessedAt.toDate().toISOString()
-                    : undefined,
-              };
-            }
-          });
-          saveCreditsStore(creditsStore);
-        } catch (e) {
-          console.warn("Could not fetch link_history from Firestore Admin:", e);
-        }
-      }
+      await syncFirestoreLinksViaRest();
 
       const allLinks = Object.values(creditsStore.links || {})
         .map((link) => {
           const albumData = localAlbumsStore[link.folderId] || loadAlbumFromDisk(link.folderId);
-          const selectedCount = Array.isArray(albumData?.selectedIds)
+          const diskSelectedCount = Array.isArray(albumData?.selectedIds)
             ? albumData.selectedIds.length
             : 0;
-          const annotatedCount =
+          const diskAnnotatedCount =
             albumData?.annotations && typeof albumData.annotations === "object"
               ? Object.values(albumData.annotations).filter(
                   (arr: any) => Array.isArray(arr) && arr.length > 0
@@ -2229,8 +2373,8 @@ CRITICAL RULES FOR REALISTIC WEDDING RETOUCHING (MANDATORY & ABSOLUTE):
               : 0;
           return {
             ...link,
-            selectedCount,
-            annotatedCount,
+            selectedCount: Math.max(link.selectedCount || 0, diskSelectedCount),
+            annotatedCount: Math.max(link.annotatedCount || 0, diskAnnotatedCount),
           };
         })
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());

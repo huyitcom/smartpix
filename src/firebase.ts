@@ -730,32 +730,54 @@ export const recordLinkCreation = async (data: {
       } catch {}
     }
 
+    const existingAssignedUid = existingFirestoreData?.assignedCreatorUid;
+    const existingCreatorUid =
+      existingAssignedUid && existingAssignedUid !== 'guest'
+        ? existingAssignedUid
+        : existingFirestoreData?.creatorUid;
+    const existingCreatorEmail =
+      existingAssignedUid && existingAssignedUid !== 'guest'
+        ? existingFirestoreData?.assignedCreatorEmail || existingFirestoreData?.creatorEmail
+        : existingFirestoreData?.creatorEmail;
+    const existingCreatorName =
+      existingAssignedUid && existingAssignedUid !== 'guest'
+        ? existingFirestoreData?.assignedCreatorName || existingFirestoreData?.creatorName
+        : existingFirestoreData?.creatorName;
+    const existingCreatorRole =
+      existingAssignedUid && existingAssignedUid !== 'guest'
+        ? existingFirestoreData?.assignedCreatorRole || existingFirestoreData?.creatorRole
+        : existingFirestoreData?.creatorRole;
+    const existingCreatorPhotoURL =
+      existingAssignedUid && existingAssignedUid !== 'guest'
+        ? existingFirestoreData?.assignedCreatorPhotoURL ?? existingFirestoreData?.creatorPhotoURL
+        : existingFirestoreData?.creatorPhotoURL;
+
     const firestoreHasRealCreator = Boolean(
-      existingFirestoreData?.creatorUid &&
-        existingFirestoreData.creatorUid !== 'guest' &&
-        existingFirestoreData?.creatorEmail &&
-        existingFirestoreData.creatorEmail !== 'Chưa đăng nhập'
+      existingCreatorUid &&
+        existingCreatorUid !== 'guest' &&
+        existingCreatorEmail &&
+        existingCreatorEmail !== 'Chưa đăng nhập'
     );
 
     // If caller provided a real logged-in creator, use it. Otherwise, strictly preserve existing creator!
     const finalUid = hasRealCreator
       ? activeCreator!.uid
-      : (firestoreHasRealCreator ? existingFirestoreData.creatorUid : (existingLocal?.creatorUid || undefined));
+      : (firestoreHasRealCreator ? existingCreatorUid : (existingLocal?.creatorUid || undefined));
     const finalEmail = hasRealCreator
       ? (activeCreator!.email || 'Chưa đăng nhập')
-      : (firestoreHasRealCreator ? existingFirestoreData.creatorEmail : (existingLocal?.creatorEmail || undefined));
+      : (firestoreHasRealCreator ? existingCreatorEmail : (existingLocal?.creatorEmail || undefined));
     const finalName = hasRealCreator
       ? (activeCreator!.displayName || activeCreator!.email || 'Khách vãng lai')
-      : (firestoreHasRealCreator ? existingFirestoreData.creatorName : (existingLocal?.creatorName || undefined));
+      : (firestoreHasRealCreator ? existingCreatorName : (existingLocal?.creatorName || undefined));
     const finalRole = hasRealCreator
       ? ((activeCreator!.role as any) || 'user')
-      : (firestoreHasRealCreator ? existingFirestoreData.creatorRole : ((existingLocal?.creatorRole as any) || undefined));
+      : (firestoreHasRealCreator ? existingCreatorRole : ((existingLocal?.creatorRole as any) || undefined));
     const finalPhotoURL = hasRealCreator
       ? (activeCreator!.photoURL || null)
-      : (firestoreHasRealCreator ? existingFirestoreData.creatorPhotoURL : (existingLocal?.creatorPhotoURL || null));
+      : (firestoreHasRealCreator ? existingCreatorPhotoURL : (existingLocal?.creatorPhotoURL || null));
 
-    let originalCreatedAt: string | undefined = undefined;
-    if (existingFirestoreData?.createdAt) {
+    let originalCreatedAt: string | undefined = existingFirestoreData?.originalCreatedAt || existingFirestoreData?.createdAtStr;
+    if (!originalCreatedAt && existingFirestoreData?.createdAt) {
       if (typeof existingFirestoreData.createdAt === 'string') {
         originalCreatedAt = existingFirestoreData.createdAt;
       } else if (typeof existingFirestoreData.createdAt?.toDate === 'function') {
@@ -819,24 +841,30 @@ export const recordLinkCreation = async (data: {
         if (payload.selectedCount !== undefined) firestoreData.selectedCount = payload.selectedCount;
         if (payload.annotatedCount !== undefined) firestoreData.annotatedCount = payload.annotatedCount;
 
-        // ONLY write creator fields if we have a real creator or if Firestore already had one
-        if (hasRealCreator) {
+        // Write both standard and Vercel-immune assignedCreator fields
+        if (hasRealCreator || firestoreHasRealCreator) {
           firestoreData.creatorUid = finalUid;
           firestoreData.creatorEmail = finalEmail;
           firestoreData.creatorName = finalName;
           firestoreData.creatorRole = finalRole;
           firestoreData.creatorPhotoURL = finalPhotoURL;
-        } else if (firestoreHasRealCreator) {
-          firestoreData.creatorUid = existingFirestoreData.creatorUid;
-          firestoreData.creatorEmail = existingFirestoreData.creatorEmail;
-          firestoreData.creatorName = existingFirestoreData.creatorName;
-          firestoreData.creatorRole = existingFirestoreData.creatorRole;
-          firestoreData.creatorPhotoURL = existingFirestoreData.creatorPhotoURL;
+
+          firestoreData.assignedCreatorUid = finalUid;
+          firestoreData.assignedCreatorEmail = finalEmail;
+          firestoreData.assignedCreatorName = finalName;
+          firestoreData.assignedCreatorRole = finalRole;
+          firestoreData.assignedCreatorPhotoURL = finalPhotoURL;
         }
 
         // Only set createdAt if the document doesn't have an existing creation timestamp
         if (!existingFirestoreData?.createdAt && !originalCreatedAt) {
-          firestoreData.createdAt = serverTimestamp();
+          const nowStr = new Date().toISOString();
+          firestoreData.createdAt = nowStr;
+          firestoreData.originalCreatedAt = nowStr;
+          firestoreData.createdAtStr = nowStr;
+        } else if (originalCreatedAt && !existingFirestoreData?.originalCreatedAt) {
+          firestoreData.originalCreatedAt = originalCreatedAt;
+          firestoreData.createdAtStr = originalCreatedAt;
         }
 
         await setDoc(linkDocRef, firestoreData, { merge: true });
@@ -879,7 +907,7 @@ export const assignLinkCreator = async (
       }),
     }).catch(() => {});
 
-    // 2. Direct Firestore update - updates creator & updatedAt, preserves original createdAt
+    // 2. Direct Firestore update - updates both creator & immune assignedCreator fields, preserves original createdAt
     if (db) {
       const linkDocRef = doc(db, 'link_history', folderId);
       const updateData: Record<string, any> = {
@@ -888,10 +916,16 @@ export const assignLinkCreator = async (
         creatorName: user.displayName || user.email,
         creatorRole: role,
         creatorPhotoURL: user.photoURL || null,
+        assignedCreatorUid: user.uid,
+        assignedCreatorEmail: user.email,
+        assignedCreatorName: user.displayName || user.email,
+        assignedCreatorRole: role,
+        assignedCreatorPhotoURL: user.photoURL || null,
         updatedAt: serverTimestamp(),
       };
       if (originalCreatedAt) {
         updateData.createdAt = originalCreatedAt;
+        updateData.originalCreatedAt = originalCreatedAt;
         updateData.createdAtStr = originalCreatedAt;
       }
       await setDoc(linkDocRef, updateData, { merge: true });
@@ -903,6 +937,24 @@ export const assignLinkCreator = async (
 
 export const fetchAllLinkHistory = async (): Promise<LinkHistoryItem[]> => {
   let list: LinkHistoryItem[] = [];
+  const createTimeMap = new Map<string, string>();
+
+  // 0. Fetch Firestore REST API to obtain hardware-immutable doc.createTime for every document
+  try {
+    const projectId = firebaseConfig.projectId || 'photo-picker-507413';
+    const restUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/link_history?pageSize=300`;
+    const restRes = await fetch(restUrl);
+    if (restRes.ok) {
+      const restData = await restRes.json();
+      const docs = Array.isArray(restData?.documents) ? restData.documents : [];
+      for (const docItem of docs) {
+        const docId = String(docItem.name || '').split('/').pop() || '';
+        if (docId && docItem.createTime) {
+          createTimeMap.set(docId, docItem.createTime);
+        }
+      }
+    }
+  } catch {}
 
   // 1. Try Firestore client first
   if (db) {
@@ -910,14 +962,30 @@ export const fetchAllLinkHistory = async (): Promise<LinkHistoryItem[]> => {
       const snap = await getDocs(collection(db, 'link_history'));
       snap.forEach((docSnap) => {
         const d = docSnap.data() || {};
-        const createdAtStr =
-          typeof d.createdAt === 'string'
+        const docId = d.folderId || docSnap.id;
+        const sysCreateTime = createTimeMap.get(docSnap.id) || createTimeMap.get(docId);
+
+        const fieldCreatedAt =
+          typeof d.originalCreatedAt === 'string'
+            ? d.originalCreatedAt
+            : typeof d.createdAtStr === 'string'
+            ? d.createdAtStr
+            : typeof d.createdAt === 'string'
             ? d.createdAt
             : typeof d.createdAt?.toDate === 'function'
             ? d.createdAt.toDate().toISOString()
-            : typeof d.createdAtStr === 'string'
-            ? d.createdAtStr
-            : new Date().toISOString();
+            : undefined;
+
+        // Always take the earliest timestamp between Firestore's immutable createTime and fieldCreatedAt
+        let createdAtStr = sysCreateTime || fieldCreatedAt || new Date().toISOString();
+        if (sysCreateTime && fieldCreatedAt) {
+          const tSys = new Date(sysCreateTime).getTime();
+          const tField = new Date(fieldCreatedAt).getTime();
+          if (!Number.isNaN(tSys) && !Number.isNaN(tField)) {
+            createdAtStr = tSys <= tField ? sysCreateTime : fieldCreatedAt;
+          }
+        }
+
         const lastAccessedAtStr =
           typeof d.lastAccessedAt === 'string'
             ? d.lastAccessedAt
@@ -925,17 +993,57 @@ export const fetchAllLinkHistory = async (): Promise<LinkHistoryItem[]> => {
             ? d.lastAccessedAt.toDate().toISOString()
             : undefined;
 
+        // Prioritize immune assignedCreator* fields if an old Vercel endpoint overwrote creatorUid to 'guest'
+        const hasAssigned = Boolean(d.assignedCreatorUid && d.assignedCreatorUid !== 'guest');
+        const resolvedUid = hasAssigned ? d.assignedCreatorUid : d.creatorUid;
+        const resolvedEmail = hasAssigned
+          ? d.assignedCreatorEmail || d.creatorEmail || 'Chưa đăng nhập'
+          : d.creatorEmail || 'Chưa đăng nhập';
+        const resolvedName = hasAssigned
+          ? d.assignedCreatorName || d.creatorName || 'Khách vãng lai'
+          : d.creatorName || 'Khách vãng lai';
+        const resolvedRole = hasAssigned
+          ? d.assignedCreatorRole || d.creatorRole || 'user'
+          : d.creatorRole || 'guest';
+        const resolvedPhotoURL = hasAssigned
+          ? d.assignedCreatorPhotoURL ?? d.creatorPhotoURL ?? null
+          : d.creatorPhotoURL || null;
+
+        // Self-heal in background if old Vercel deployment overwrote creatorUid or createdAt
+        const rawFieldCreatedAt = typeof d.createdAt === 'string' ? d.createdAt : undefined;
+        const wasTimestampBumped =
+          sysCreateTime &&
+          rawFieldCreatedAt &&
+          new Date(rawFieldCreatedAt).getTime() - new Date(sysCreateTime).getTime() > 60000;
+        const wasCreatorOverwritten = hasAssigned && d.creatorUid === 'guest';
+
+        if (wasTimestampBumped || wasCreatorOverwritten) {
+          const healPayload: Record<string, any> = {
+            createdAt: createdAtStr,
+            originalCreatedAt: createdAtStr,
+            createdAtStr: createdAtStr,
+          };
+          if (hasAssigned) {
+            healPayload.creatorUid = resolvedUid;
+            healPayload.creatorEmail = resolvedEmail;
+            healPayload.creatorName = resolvedName;
+            healPayload.creatorRole = resolvedRole;
+            healPayload.creatorPhotoURL = resolvedPhotoURL;
+          }
+          setDoc(doc(db, 'link_history', docSnap.id), healPayload, { merge: true }).catch(() => {});
+        }
+
         list.push({
           id: docSnap.id,
-          folderId: d.folderId || docSnap.id,
-          driveUrl: d.driveUrl || `https://drive.google.com/drive/folders/${d.folderId || docSnap.id}`,
-          shareUrl: d.shareUrl || `/?folder=${d.folderId || docSnap.id}`,
+          folderId: docId,
+          driveUrl: d.driveUrl || `https://drive.google.com/drive/folders/${docId}`,
+          shareUrl: d.shareUrl || `/?folder=${docId}`,
           customTitle: d.customTitle || undefined,
-          creatorUid: d.creatorUid,
-          creatorEmail: d.creatorEmail || 'Chưa đăng nhập',
-          creatorName: d.creatorName || 'Khách vãng lai',
-          creatorRole: d.creatorRole || 'guest',
-          creatorPhotoURL: d.creatorPhotoURL || null,
+          creatorUid: resolvedUid,
+          creatorEmail: resolvedEmail,
+          creatorName: resolvedName,
+          creatorRole: resolvedRole,
+          creatorPhotoURL: resolvedPhotoURL,
           photoCount: typeof d.photoCount === 'number' ? d.photoCount : undefined,
           selectedCount: typeof d.selectedCount === 'number' ? d.selectedCount : undefined,
           annotatedCount: typeof d.annotatedCount === 'number' ? d.annotatedCount : undefined,
