@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
   Camera, 
   Heart, 
@@ -26,7 +26,7 @@ import {
 } from 'lucide-react';
 import type { DriveFile, StrokeAnnotation, AlbumAnnotations } from '../types';
 import { db, auth, UserProfile, signInWithGoogle, recordLinkCreation, updateLinkStats } from '../firebase';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import PhotoAnnotationCanvas from './PhotoAnnotationCanvas';
 import AuthModal from './AuthModal';
 import UserProfileModal from './UserProfileModal';
@@ -69,6 +69,7 @@ export default function Gallery({
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showHandwrittenModal, setShowHandwrittenModal] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const lastLocalUpdateRef = useRef<number>(0);
 
   const handleDirectGoogleLogin = async () => {
     setGoogleLoading(true);
@@ -109,6 +110,7 @@ export default function Gallery({
     selectedIds?: string[];
     annotations?: AlbumAnnotations;
     retouched?: Record<string, string>;
+    localDirty?: boolean;
   }) => {
     try {
       const existing = localStorage.getItem(localCacheKey);
@@ -123,21 +125,75 @@ export default function Gallery({
     }
   };
 
+  const saveToDatabase = async (newSet: Set<string>) => {
+    setSyncStatus('saving');
+    const arr = Array.from(newSet);
+    const nowMs = Date.now();
+    lastLocalUpdateRef.current = nowMs;
+
+    const serverPromise = fetch(`/api/albums/${folderId}/selections`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ selectedIds: arr })
+    }).then(async (res) => {
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to save to server');
+      return true;
+    });
+
+    const firestorePromise = (async () => {
+      if (!db) throw new Error('Firestore not initialized');
+      const albumRef = doc(db, 'albums', folderId);
+      await setDoc(albumRef, {
+        selectedIds: arr,
+        updatedAtMs: nowMs,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+      const linkRef = doc(db, 'link_history', folderId);
+      await setDoc(linkRef, {
+        selectedCount: arr.length,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+      return true;
+    })();
+
+    const [serverRes, firestoreRes] = await Promise.allSettled([serverPromise, firestorePromise]);
+
+    if (serverRes.status === 'fulfilled' || firestoreRes.status === 'fulfilled') {
+      setSyncStatus('saved');
+      saveToLocalBackup({ selectedIds: arr, localDirty: false });
+    } else {
+      console.error("Save error:", serverRes.reason, firestoreRes.reason);
+      setSyncStatus('error');
+      saveToLocalBackup({ selectedIds: arr, localDirty: true });
+    }
+  };
+
   useEffect(() => {
     // 1. Instant offline cache restore from localStorage so user never sees blank on refresh
+    let cachedSelected: string[] = [];
+    let cachedAnnotations: AlbumAnnotations = {};
+    let cachedRetouched: Record<string, string> = {};
+    let isLocalUnsynced = false;
+
     try {
       const cachedStr = localStorage.getItem(localCacheKey);
       if (cachedStr) {
         const cached = JSON.parse(cachedStr);
         if (cached.selectedIds && Array.isArray(cached.selectedIds)) {
-          setSelectedIds(new Set(cached.selectedIds));
-          if (cached.selectedIds.length > 0) setSyncStatus('saved');
+          cachedSelected = cached.selectedIds;
+          setSelectedIds(new Set(cachedSelected));
+          if (cachedSelected.length > 0) setSyncStatus('saved');
+          // Legacy localStorage entries (without localDirty) or interrupted saves (localDirty === true)
+          isLocalUnsynced = cachedSelected.length > 0 && cached.localDirty !== false;
         }
         if (cached.annotations && typeof cached.annotations === 'object') {
-          setAnnotations(cached.annotations);
+          cachedAnnotations = cached.annotations;
+          setAnnotations(cachedAnnotations);
         }
         if (cached.retouched && typeof cached.retouched === 'object') {
-          setRetouchedImages(cached.retouched);
+          cachedRetouched = cached.retouched;
+          setRetouchedImages(cachedRetouched);
         }
       }
     } catch (e) {
@@ -160,93 +216,92 @@ export default function Gallery({
           photoCount: fetchedList.length,
         });
 
-        // Auto-claim: If the link is currently unclaimed ("guest" / "Khách vãng lai") and the visitor is a logged-in member
-        if (userProfile && userProfile.uid && userProfile.uid !== 'guest' && db) {
-          try {
-            const linkSnap = await getDoc(doc(db, 'link_history', folderId));
-            if (linkSnap.exists()) {
-              const ld = linkSnap.data();
-              if (!ld.creatorUid || ld.creatorUid === 'guest' || ld.creatorEmail === 'Chưa đăng nhập' || ld.creatorName === 'Khách vãng lai') {
-                recordLinkCreation({
-                  folderId,
-                  creator: userProfile,
-                  photoCount: fetchedList.length,
-                });
-              }
-            }
-          } catch {}
+        // Fetch saved selections & annotations from Server and Firestore in parallel
+        const [serverResult, firestoreResult] = await Promise.allSettled([
+          fetch(`/api/albums/${folderId}/selections?t=${Date.now()}`, { cache: 'no-store' }).then(async r => {
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.error || 'Server error');
+            return d;
+          }),
+          db ? getDoc(doc(db, 'albums', folderId)) : Promise.reject(new Error('No db'))
+        ]);
+
+        let serverSelected: string[] = [];
+        let serverAnnotations: AlbumAnnotations = {};
+        let serverRetouched: Record<string, string> = {};
+        if (serverResult.status === 'fulfilled' && serverResult.value) {
+          serverSelected = Array.isArray(serverResult.value.selectedIds) ? serverResult.value.selectedIds : [];
+          serverAnnotations = serverResult.value.annotations && typeof serverResult.value.annotations === 'object' ? serverResult.value.annotations : {};
+          serverRetouched = serverResult.value.retouched && typeof serverResult.value.retouched === 'object' ? serverResult.value.retouched : {};
         }
 
-        // Fetch saved selections & annotations from server (which reads from persistent disk storage)
-        const resSelections = await fetch(`/api/albums/${folderId}/selections?t=${Date.now()}`, {
-          cache: 'no-store'
-        });
-        const dataSelections = await resSelections.json();
-        if (resSelections.ok) {
-          const serverSelected = dataSelections.selectedIds || [];
-          const serverAnnotations = dataSelections.annotations || {};
-          const serverRetouched = dataSelections.retouched || {};
+        let fSelected: string[] = [];
+        let fAnnotations: AlbumAnnotations = {};
+        let hasFirestoreDoc = false;
+        if (firestoreResult.status === 'fulfilled' && firestoreResult.value.exists()) {
+          hasFirestoreDoc = true;
+          const fData = firestoreResult.value.data() || {};
+          fSelected = Array.isArray(fData.selectedIds) ? fData.selectedIds : [];
+          fAnnotations = fData.annotations && typeof fData.annotations === 'object' ? fData.annotations : {};
+        }
 
-          // Safely merge with any existing local cache to prevent data loss
-          let mergedSelected = serverSelected;
-          let mergedAnnotations = serverAnnotations;
-          let mergedRetouched = serverRetouched;
+        // Combine cloud state (preferring Firestore if present, merged with server disk)
+        const cloudSelected = hasFirestoreDoc
+          ? Array.from(new Set([...fSelected, ...serverSelected]))
+          : serverSelected;
+        const mergedAnnotations: AlbumAnnotations = {
+          ...cachedAnnotations,
+          ...serverAnnotations,
+          ...fAnnotations,
+        };
+        const mergedRetouched: Record<string, string> = {
+          ...cachedRetouched,
+          ...serverRetouched,
+        };
 
-          try {
-            const cachedStr = localStorage.getItem(localCacheKey);
-            if (cachedStr) {
-              const cached = JSON.parse(cachedStr);
-              if (cached.annotations && typeof cached.annotations === 'object') {
-                mergedAnnotations = { ...cached.annotations, ...serverAnnotations };
-              }
-              if (cached.selectedIds && Array.isArray(cached.selectedIds)) {
-                mergedSelected = Array.from(new Set([...cached.selectedIds, ...serverSelected]));
-              }
-              if (cached.retouched && typeof cached.retouched === 'object') {
-                mergedRetouched = { ...cached.retouched, ...serverRetouched };
-              }
-            }
-          } catch (e) {}
+        let finalSelected: string[];
+        let needsCloudPush = false;
 
-          setSelectedIds(new Set(mergedSelected));
-          setAnnotations(mergedAnnotations);
-          setRetouchedImages(mergedRetouched);
-          if (mergedSelected.length > 0 || Object.keys(mergedAnnotations).length > 0) {
-            setSyncStatus('saved');
-          }
-
-          saveToLocalBackup({
-            selectedIds: mergedSelected,
-            annotations: mergedAnnotations,
-            retouched: mergedRetouched,
-          });
-
-          // Also check Firestore directly if client SDK has access
-          if (db) {
-            try {
-              const albumDocRef = doc(db, 'albums', folderId);
-              const albumSnap = await getDoc(albumDocRef);
-              if (albumSnap.exists()) {
-                const fData = albumSnap.data() || {};
-                const fSelected = Array.isArray(fData.selectedIds) ? fData.selectedIds : [];
-                const fAnnotations = fData.annotations && typeof fData.annotations === 'object' ? fData.annotations : {};
-                if (fSelected.length > 0 || Object.keys(fAnnotations).length > 0) {
-                  mergedSelected = Array.from(new Set([...mergedSelected, ...fSelected]));
-                  mergedAnnotations = { ...mergedAnnotations, ...fAnnotations };
-                  setSelectedIds(new Set(mergedSelected));
-                  setAnnotations(mergedAnnotations);
-                  setSyncStatus('saved');
-                  saveToLocalBackup({
-                    selectedIds: mergedSelected,
-                    annotations: mergedAnnotations,
-                    retouched: mergedRetouched,
-                  });
-                }
-              }
-            } catch (e) {}
+        if (isLocalUnsynced) {
+          // Local browser has unsynced or legacy localStorage selections (e.g. 60 items locally vs 40 in cloud)
+          finalSelected = Array.from(new Set([...cachedSelected, ...cloudSelected]));
+          const fSet = new Set(fSelected);
+          const sSet = new Set(serverSelected);
+          if (
+            finalSelected.length !== fSelected.length ||
+            finalSelected.length !== serverSelected.length ||
+            finalSelected.some(id => !fSet.has(id) || !sSet.has(id))
+          ) {
+            needsCloudPush = true;
           }
         } else {
-          console.warn("Could not load previous selections:", dataSelections.error);
+          // Local cache was already synced previously -> trust cloud state so unselections on other devices take effect
+          finalSelected = (hasFirestoreDoc || serverResult.status === 'fulfilled')
+            ? cloudSelected
+            : cachedSelected;
+          // If Firestore and Server differ, also sync them
+          if (hasFirestoreDoc && serverResult.status === 'fulfilled' && fSelected.length !== serverSelected.length) {
+            needsCloudPush = true;
+          }
+        }
+
+        setSelectedIds(new Set(finalSelected));
+        setAnnotations(mergedAnnotations);
+        setRetouchedImages(mergedRetouched);
+        if (finalSelected.length > 0 || Object.keys(mergedAnnotations).length > 0) {
+          setSyncStatus('saved');
+        }
+
+        saveToLocalBackup({
+          selectedIds: finalSelected,
+          annotations: mergedAnnotations,
+          retouched: mergedRetouched,
+          localDirty: false,
+        });
+
+        // Push unsynced local selections immediately to Firestore & Server so Admin and other devices see the exact same count
+        if (needsCloudPush && finalSelected.length > 0) {
+          saveToDatabase(new Set(finalSelected));
         }
       } catch (err: any) {
         setError(err.message);
@@ -255,6 +310,56 @@ export default function Gallery({
       }
     };
     fetchFilesAndSelections();
+
+    // Real-time listener so Admin and customers see selection changes live across devices
+    let unsubscribe: (() => void) | undefined;
+    if (db) {
+      const albumDocRef = doc(db, 'albums', folderId);
+      unsubscribe = onSnapshot(albumDocRef, (snap) => {
+        if (!snap.exists()) return;
+        // Ignore echo from our own recent local save within 1.5s
+        if (Date.now() - lastLocalUpdateRef.current < 1500) return;
+
+        const fData = snap.data() || {};
+        if (Array.isArray(fData.selectedIds)) {
+          // Check if local browser currently has unsynced offline changes
+          let hasUnsyncedLocal = false;
+          let localArr: string[] = [];
+          try {
+            const raw = localStorage.getItem(localCacheKey);
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (parsed.localDirty === true && Array.isArray(parsed.selectedIds)) {
+                hasUnsyncedLocal = true;
+                localArr = parsed.selectedIds;
+              }
+            }
+          } catch {}
+
+          if (hasUnsyncedLocal) {
+            const combined = Array.from(new Set([...localArr, ...fData.selectedIds]));
+            setSelectedIds(new Set(combined));
+            saveToDatabase(new Set(combined));
+          } else {
+            setSelectedIds(new Set(fData.selectedIds));
+            saveToLocalBackup({
+              selectedIds: fData.selectedIds,
+              localDirty: false,
+            });
+            if (fData.selectedIds.length > 0) {
+              setSyncStatus('saved');
+            }
+          }
+        }
+        if (fData.annotations && typeof fData.annotations === 'object') {
+          setAnnotations(prev => ({ ...prev, ...fData.annotations }));
+        }
+      });
+    }
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
   }, [folderId]);
 
   const toggleSelect = async (id: string) => {
@@ -267,7 +372,7 @@ export default function Gallery({
       }
       
       const arr = Array.from(newSet);
-      saveToLocalBackup({ selectedIds: arr });
+      saveToLocalBackup({ selectedIds: arr, localDirty: true });
       saveToDatabase(newSet);
       return newSet;
     });
@@ -276,52 +381,10 @@ export default function Gallery({
   const handleApplyHandwrittenSelections = (newSet: Set<string>) => {
     setSelectedIds(newSet);
     const arr = Array.from(newSet);
-    saveToLocalBackup({ selectedIds: arr });
+    saveToLocalBackup({ selectedIds: arr, localDirty: true });
     saveToDatabase(newSet);
     if (newSet.size > 0) {
       setFilterMode('selected');
-    }
-  };
-
-  const saveToDatabase = async (newSet: Set<string>) => {
-    setSyncStatus('saving');
-    const arr = Array.from(newSet);
-
-    try {
-      // 1. Save to server persistent disk API
-      const res = await fetch(`/api/albums/${folderId}/selections`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ selectedIds: arr })
-      });
-      
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to save');
-      }
-      setSyncStatus('saved');
-
-      // 2. Direct Firestore Client Sync (works for both customers and studio owners)
-      if (db) {
-        try {
-          const albumRef = doc(db, 'albums', folderId);
-          await setDoc(albumRef, {
-            selectedIds: arr,
-            updatedAtMs: Date.now(),
-            updatedAt: serverTimestamp()
-          }, { merge: true });
-          const linkRef = doc(db, 'link_history', folderId);
-          await setDoc(linkRef, {
-            selectedCount: arr.length,
-            updatedAt: serverTimestamp()
-          }, { merge: true });
-        } catch {
-          // Handled by server /api/albums persistence
-        }
-      }
-    } catch (err) {
-      console.error("Save error", err);
-      setSyncStatus('error');
     }
   };
 

@@ -759,22 +759,22 @@ export const recordLinkCreation = async (data: {
         existingCreatorEmail !== 'Chưa đăng nhập'
     );
 
-    // If caller provided a real logged-in creator, use it. Otherwise, strictly preserve existing creator!
-    const finalUid = hasRealCreator
-      ? activeCreator!.uid
-      : (firestoreHasRealCreator ? existingCreatorUid : (existingLocal?.creatorUid || undefined));
-    const finalEmail = hasRealCreator
-      ? (activeCreator!.email || 'Chưa đăng nhập')
-      : (firestoreHasRealCreator ? existingCreatorEmail : (existingLocal?.creatorEmail || undefined));
-    const finalName = hasRealCreator
-      ? (activeCreator!.displayName || activeCreator!.email || 'Khách vãng lai')
-      : (firestoreHasRealCreator ? existingCreatorName : (existingLocal?.creatorName || undefined));
-    const finalRole = hasRealCreator
-      ? ((activeCreator!.role as any) || 'user')
-      : (firestoreHasRealCreator ? existingCreatorRole : ((existingLocal?.creatorRole as any) || undefined));
-    const finalPhotoURL = hasRealCreator
-      ? (activeCreator!.photoURL || null)
-      : (firestoreHasRealCreator ? existingCreatorPhotoURL : (existingLocal?.creatorPhotoURL || null));
+    // Strictly preserve existing Firestore creator if the link already belongs to a real member!
+    const finalUid = firestoreHasRealCreator
+      ? existingCreatorUid
+      : (hasRealCreator ? activeCreator!.uid : (existingLocal?.creatorUid || undefined));
+    const finalEmail = firestoreHasRealCreator
+      ? existingCreatorEmail
+      : (hasRealCreator ? (activeCreator!.email || 'Chưa đăng nhập') : (existingLocal?.creatorEmail || undefined));
+    const finalName = firestoreHasRealCreator
+      ? existingCreatorName
+      : (hasRealCreator ? (activeCreator!.displayName || activeCreator!.email || 'Khách vãng lai') : (existingLocal?.creatorName || undefined));
+    const finalRole = firestoreHasRealCreator
+      ? existingCreatorRole
+      : (hasRealCreator ? ((activeCreator!.role as any) || 'user') : ((existingLocal?.creatorRole as any) || undefined));
+    const finalPhotoURL = firestoreHasRealCreator
+      ? existingCreatorPhotoURL
+      : (hasRealCreator ? (activeCreator!.photoURL || null) : (existingLocal?.creatorPhotoURL || null));
 
     let originalCreatedAt: string | undefined = existingFirestoreData?.originalCreatedAt || existingFirestoreData?.createdAtStr;
     if (!originalCreatedAt && existingFirestoreData?.createdAt) {
@@ -806,8 +806,8 @@ export const recordLinkCreation = async (data: {
       lastAccessedAt: new Date().toISOString(),
     };
 
-    // 0. Save to local storage for the creator
-    if (hasRealCreator) {
+    // 0. Save to local storage ONLY if activeCreator is the actual owner of this link
+    if (hasRealCreator && finalUid === activeCreator!.uid) {
       const currentLocal = getLocalUserLinks(finalUid!).filter((i) => i.folderId !== data.folderId);
       saveLocalUserLinks(finalUid!, [payload, ...currentLocal]);
     }
@@ -1131,45 +1131,42 @@ export const fetchAllLinkHistory = async (): Promise<LinkHistoryItem[]> => {
 
 export const fetchUserLinkHistory = async (user: UserProfile | null): Promise<LinkHistoryItem[]> => {
   if (!user) {
-    const guestList = getLocalUserLinks('guest').sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
-    return enrichLinksWithSelectionStats(guestList);
+    return [];
   }
 
-  const guestItems = getLocalUserLinks('guest').map((item) => ({
-    ...item,
-    creatorUid: user.uid,
-    creatorEmail: user.email || item.creatorEmail,
-    creatorName: user.displayName || user.email || item.creatorName,
-    creatorRole: (user.role as any) || 'user',
-    creatorPhotoURL: user.photoURL || null,
-  }));
-  if (guestItems.length > 0) {
-    saveLocalUserLinks('guest', []);
-    for (const gItem of guestItems) {
-      recordLinkCreation({
-        folderId: gItem.folderId,
-        driveUrl: gItem.driveUrl,
-        customTitle: gItem.customTitle,
-        creator: user,
-        photoCount: gItem.photoCount,
-      });
-    }
-  }
+  // Clear any legacy guest-viewed links in localStorage so they never pollute a logged-in account
+  saveLocalUserLinks('guest', []);
 
-  const localItems = [...guestItems, ...getLocalUserLinks(user.uid)];
   const allRemote = await fetchAllLinkHistory();
-
   const cleanUserEmail = user.email?.trim().toLowerCase();
-  const matchedRemote = allRemote.filter((item) => {
+
+  const isOwnedByUser = (item: LinkHistoryItem) => {
     if (item.creatorUid && item.creatorUid === user.uid) return true;
     if (cleanUserEmail && item.creatorEmail && item.creatorEmail.trim().toLowerCase() === cleanUserEmail) return true;
     return false;
-  });
+  };
+
+  const matchedRemote = allRemote.filter(isOwnedByUser);
+
+  // Filter localStorage cache: if remote list loaded, only keep local items that are confirmed owned by this user in remote
+  const rawLocalItems = getLocalUserLinks(user.uid);
+  const remoteMap = new Map<string, LinkHistoryItem>();
+  for (const r of allRemote) {
+    remoteMap.set(r.folderId, r);
+  }
+
+  const verifiedLocalItems =
+    allRemote.length > 0
+      ? rawLocalItems.filter((item) => {
+          const remoteItem = remoteMap.get(item.folderId);
+          // Discard if deleted from remote or owned by another user in remote
+          if (!remoteItem) return false;
+          return isOwnedByUser(remoteItem);
+        })
+      : rawLocalItems.filter(isOwnedByUser);
 
   const mergedMap = new Map<string, LinkHistoryItem>();
-  for (const item of [...localItems, ...matchedRemote]) {
+  for (const item of [...verifiedLocalItems, ...matchedRemote]) {
     const existing = mergedMap.get(item.folderId);
     if (!existing) {
       mergedMap.set(item.folderId, item);

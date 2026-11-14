@@ -272,14 +272,16 @@ async function startServer() {
     let annotations: Record<string, any> = localAlbumsStore[folderId]?.annotations || {};
     let retouched: Record<string, string> = localAlbumsStore[folderId]?.retouched || {};
 
-    // 2. Also sync from Firestore if configured
+    // 2. Also sync from Firestore (Admin SDK or REST fallback for Vercel)
     if (currentDb) {
       try {
         const doc = await currentDb.collection("albums").doc(folderId).get();
         if (doc.exists) {
           const data = doc.data();
           if (data?.selectedIds && Array.isArray(data.selectedIds)) {
-            selectedIds = Array.from(new Set([...selectedIds, ...data.selectedIds]));
+            selectedIds = data.selectedIds.length > 0 || data.updatedAtMs
+              ? data.selectedIds
+              : Array.from(new Set([...selectedIds, ...data.selectedIds]));
           }
           if (data?.annotations) {
             annotations = { ...annotations, ...data.annotations };
@@ -296,6 +298,26 @@ async function startServer() {
         }
       } catch (error) {
         console.warn("Could not fetch album data from Firestore, using disk store:", error);
+      }
+    } else {
+      try {
+        const projectId = process.env.VITE_FIREBASE_PROJECT_ID || "photo-picker-507413";
+        const restUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/albums/${encodeURIComponent(folderId)}`;
+        const resp = await fetch(restUrl);
+        if (resp.ok) {
+          const docJson = await resp.json();
+          const fields = docJson?.fields || {};
+          if (fields.selectedIds?.arrayValue) {
+            const restSelected = (fields.selectedIds.arrayValue.values || [])
+              .map((v: any) => v.stringValue)
+              .filter(Boolean);
+            selectedIds = restSelected;
+            localAlbumsStore[folderId] = { ...localAlbumsStore[folderId], selectedIds };
+            saveAlbumToDisk(folderId, localAlbumsStore[folderId]);
+          }
+        }
+      } catch (err) {
+        // Fallback to localAlbumsStore
       }
     }
 
@@ -317,16 +339,57 @@ async function startServer() {
     localAlbumsStore[folderId].selectedIds = selectedIds;
     saveAlbumToDisk(folderId, localAlbumsStore[folderId]);
 
+    if (creditsStore.links && creditsStore.links[folderId]) {
+      creditsStore.links[folderId].selectedCount = selectedIds.length;
+      saveCreditsStore(creditsStore);
+    }
+
     const currentDb = getSafeDb();
     if (currentDb) {
       try {
         await currentDb.collection("albums").doc(folderId).set({
           selectedIds,
+          updatedAtMs: Date.now(),
+          updatedAt: FieldValue.serverTimestamp()
+        }, { merge: true });
+        await currentDb.collection("link_history").doc(folderId).set({
+          selectedCount: selectedIds.length,
           updatedAt: FieldValue.serverTimestamp()
         }, { merge: true });
       } catch (error) {
         console.warn("Failed saving selections to Firestore, stored on disk:", error);
       }
+    } else {
+      try {
+        const projectId = process.env.VITE_FIREBASE_PROJECT_ID || "photo-picker-507413";
+        const albumPatchUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/albums/${encodeURIComponent(folderId)}?updateMask.fieldPaths=selectedIds&updateMask.fieldPaths=updatedAtMs`;
+        const linkPatchUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/link_history/${encodeURIComponent(folderId)}?updateMask.fieldPaths=selectedCount`;
+        await Promise.allSettled([
+          fetch(albumPatchUrl, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              fields: {
+                selectedIds: {
+                  arrayValue: {
+                    values: selectedIds.map((id: string) => ({ stringValue: String(id) }))
+                  }
+                },
+                updatedAtMs: { integerValue: String(Date.now()) }
+              }
+            })
+          }),
+          fetch(linkPatchUrl, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              fields: {
+                selectedCount: { integerValue: String(selectedIds.length) }
+              }
+            })
+          })
+        ]);
+      } catch {}
     }
 
     res.json({ success: true, selectedIds });
